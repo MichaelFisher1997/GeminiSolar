@@ -23,7 +23,8 @@ public:
     Renderer(VulkanContext& context, Platform::SDLWindow& window);
     ~Renderer() override;
 
-    void render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime) override;
+    void render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime, std::function<void()> uiCallback = nullptr) override;
+    void resize(int width, int height) override;
 
 private:
     void createRenderPass();

@@ -6,11 +6,13 @@
 namespace Simulation {
 
 struct OrbitalParams {
-    double semiMajorAxis;  // AU (or scaled units)
+    double semiMajorAxis;  // AU
     double eccentricity;   // 0..1
     double inclination;    // Radians
-    double orbitalPeriod;  // Earth years (or seconds)
-    double meanAnomaly0;   // Radians at t=0
+    double orbitalPeriod;  // Earth years
+    double meanAnomaly0;   // Radians at t=0 (Mean Anomaly at Epoch)
+    double longitudeAscendingNode; // Radians (Omega)
+    double argumentPeriapsis;      // Radians (omega)
 };
 
 class CelestialBody {

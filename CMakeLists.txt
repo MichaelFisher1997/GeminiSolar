@@ -17,11 +17,15 @@ find_package(GLEW REQUIRED)
 file(GLOB_RECURSE SOURCES 
     "src/*.cpp"
     "src/*.hpp"
+    "src/imgui/*.cpp"
+    "src/imgui/*.h"
+    "src/imgui/backends/*.cpp"
+    "src/imgui/backends/*.h"
 )
 
 add_executable(space_sim ${SOURCES})
 
-target_include_directories(space_sim PRIVATE src ${GLEW_INCLUDE_DIRS})
+target_include_directories(space_sim PRIVATE src src/imgui src/imgui/backends ${GLEW_INCLUDE_DIRS})
 
 target_link_libraries(space_sim PRIVATE 
     SDL3::SDL3 
