@@ -1,0 +1,6 @@
+build/
+.cache/
+.direnv/
+result
+*.swp
+.DS_Store
