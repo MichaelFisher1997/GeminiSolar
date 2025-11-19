@@ -142,8 +142,8 @@ void App::update(double deltaTime) {
     if (m_lockedBody) {
         // Calculate World Position
         glm::vec3 worldPos = m_lockedBody->getWorldPosition(m_time->getSimulationTime());
-        // Apply visual distance scale (same as Renderer)
-        worldPos *= 10.0f;
+        // Apply visual distance scale
+        worldPos *= m_solarSystem->getSystemScale();
         
         m_camera->updateOrbitTarget(worldPos);
     }
@@ -154,6 +154,15 @@ void App::render() {
         m_renderer->render(*m_solarSystem, *m_camera, m_time->getSimulationTime(), [&]() {
             // UI Logic
             ImGui::Begin("Controls");
+            
+            // System Selector
+            const char* systems[] = { "Solar System", "TRAPPIST-1", "Kepler-90", "HR 8799", "Kepler-11", "55 Cancri" };
+            static int currentSystemIdx = 0;
+            if (ImGui::Combo("System", &currentSystemIdx, systems, IM_ARRAYSIZE(systems))) {
+                m_solarSystem->loadSystem(systems[currentSystemIdx]);
+                m_lockedBody = nullptr;
+                m_camera->setOrbitTarget(glm::vec3(0.0f), 20.0f);
+            }
             
             // Time Scale
             float timeScale = static_cast<float>(m_time->getTimeScale());
@@ -172,13 +181,15 @@ void App::render() {
                     m_lockedBody = m_solarSystem->getSun();
                 }
                 
+                float systemScale = m_solarSystem->getSystemScale();
+                
                 auto& bodies = m_solarSystem->getBodies();
                 for (const auto& body : bodies) {
                     if (body->getName() == "Sun") continue;
                     
                     // Root bodies
                      if (ImGui::Selectable(body->getName().c_str())) {
-                         glm::vec3 worldPos = body->getWorldPosition(m_time->getSimulationTime()) * 10.0f;
+                         glm::vec3 worldPos = body->getWorldPosition(m_time->getSimulationTime()) * systemScale;
                          m_camera->setOrbitTarget(worldPos, 5.0f);
                          m_lockedBody = body.get();
                      }
@@ -186,7 +197,7 @@ void App::render() {
                      for (const auto& child : body->getChildren()) {
                          std::string label = "  " + child->getName();
                          if (ImGui::Selectable(label.c_str())) {
-                             glm::vec3 worldPos = child->getWorldPosition(m_time->getSimulationTime()) * 10.0f;
+                             glm::vec3 worldPos = child->getWorldPosition(m_time->getSimulationTime()) * systemScale;
                              m_camera->setOrbitTarget(worldPos, 2.0f);
                              m_lockedBody = child.get();
                          }

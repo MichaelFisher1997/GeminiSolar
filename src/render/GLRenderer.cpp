@@ -14,7 +14,6 @@ namespace Render {
 GLRenderer::GLRenderer(Platform::SDLWindow& window) 
     : m_window(window) {
     
-    // Set GL attributes BEFORE context creation
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -26,7 +25,6 @@ GLRenderer::GLRenderer(Platform::SDLWindow& window)
 
     SDL_GL_MakeCurrent(window.getHandle(), m_glContext);
     
-    // Init GLEW
     glewExperimental = GL_TRUE; 
     GLenum err = glewInit();
     if (GLEW_OK != err) {
@@ -105,20 +103,17 @@ void GLRenderer::createShaders() {
         uniform int isSun; // 1 if Sun, 0 otherwise
 
         void main() {
-            // Special case for Sun: Unlit bright color
             if (isSun == 1) {
                 FragColor = vec4(objectColor, 1.0);
                 return;
             }
 
-            // Ambient
             float ambientStrength = 0.2;
             vec3 lightColor = vec3(1.0, 1.0, 1.0);
             vec3 ambient = ambientStrength * lightColor;
   
-            // Diffuse 
             vec3 norm = normalize(Normal);
-            vec3 lightPos = vec3(0.0, 0.0, 0.0); // Sun at origin
+            vec3 lightPos = vec3(0.0, 0.0, 0.0); 
             vec3 lightDir = normalize(lightPos - FragPos);
             float diff = max(dot(norm, lightDir), 0.0);
             vec3 diffuse = diff * lightColor;
@@ -179,7 +174,6 @@ void GLRenderer::createOrbitMesh() {
         vertices.push_back(x);
         vertices.push_back(0.0f);
         vertices.push_back(z);
-        // Dummies
         vertices.push_back(0.3f); vertices.push_back(0.3f); vertices.push_back(0.3f);
         vertices.push_back(0.0f); vertices.push_back(1.0f); vertices.push_back(0.0f);
     }
@@ -250,17 +244,14 @@ void GLRenderer::createSphereMesh() {
             ny = y * lengthInv;
             nz = z * lengthInv;
 
-            // Pos
             vertices.push_back(x);
             vertices.push_back(z);
             vertices.push_back(y);
             
-            // Color
             vertices.push_back(1.0f);
             vertices.push_back(1.0f);
             vertices.push_back(1.0f);
 
-            // Normal
             vertices.push_back(nx);
             vertices.push_back(nz);
             vertices.push_back(ny);
@@ -315,46 +306,42 @@ void GLRenderer::createSphereMesh() {
 void GLRenderer::render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime, std::function<void()> uiCallback) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Start ImGui Frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
     
-    // Execute UI Callback
     if (uiCallback) {
         uiCallback();
     }
     
     ImGui::Render();
     
-    // Draw Scene
     glUseProgram(m_shaderProgram);
 
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = camera.getProjectionMatrix();
     
-    proj[1][1] *= -1; // Vulkan fix flip
+    proj[1][1] *= -1; 
 
     glUniformMatrix4fv(m_viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(m_projLoc, 1, GL_FALSE, glm::value_ptr(proj));
 
     const auto& bodies = solarSystem.getBodies();
-    float visualDistanceScale = 10.0f;
+    float visualDistanceScale = solarSystem.getSystemScale();
+    float visualPlanetScale = solarSystem.getPlanetScale(); 
 
     // Helper for recursive body rendering
     std::function<void(const Simulation::CelestialBody&, glm::mat4)> drawBodyRecursive;
     drawBodyRecursive = [&](const Simulation::CelestialBody& body, glm::mat4 parentTransform) {
         glm::vec3 localPos = body.getPosition(simulationTime);
         
-        // Visual scale logic
-        float visualRadiusScale = 0.5f;
+        float visualRadiusScale = visualPlanetScale; 
         bool isSun = false;
-        if (body.getName() == "Sun") {
-             visualRadiusScale = 1.5f / 109.0f; 
+        if (body.getName() == solarSystem.getSun()->getName()) { 
+             visualRadiusScale = 1.5f / body.getRadius(); 
              isSun = true;
         }
 
-        // Position matrix (Orbit position relative to parent)
         glm::mat4 posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
         
         // Draw Body
@@ -376,7 +363,6 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem, const Camera
         for (const auto& child : body.getChildren()) {
              float orbitRadius = child->getOrbitalParams().semiMajorAxis * visualDistanceScale;
              
-             // Inline drawOrbit logic here for simplicity in recursion
              glUniform1i(m_isSunLoc, 1); 
              glUniform3fv(m_colorLoc, 1, glm::value_ptr(glm::vec3(0.2f))); 
              
@@ -397,9 +383,7 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem, const Camera
 
     // Draw Sun and Primary Planets (Roots)
     for (const auto& body : bodies) {
-        // If it's a root body (Planets/Sun), it orbits (0,0,0).
-        // Draw its orbit first (if not Sun)
-        if (body->getName() != "Sun") {
+        if (body.get() != solarSystem.getSun()) {
              float orbitRadius = body->getOrbitalParams().semiMajorAxis * visualDistanceScale;
              drawOrbit(orbitRadius, glm::vec3(0.2f, 0.2f, 0.2f), view, proj);
         }
