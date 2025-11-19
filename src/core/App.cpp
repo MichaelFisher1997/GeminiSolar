@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cmath>
 #include "backends/imgui_impl_sdl3.h" // Required for process event
+#include <vector>
+#include <string>
 
 namespace Core {
 
@@ -16,10 +18,6 @@ App::App() {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 
         m_window = std::make_unique<Platform::SDLWindow>("Solar System Simulator (OpenGL)", 1280, 720);
-        
-        // Skip Vulkan Init
-        // m_vulkanContext = std::make_unique<Render::VulkanContext>();
-        // m_vulkanContext->init(*m_window);
         
         int width, height;
         SDL_GetWindowSize(m_window->getHandle(), &width, &height);
@@ -43,7 +41,6 @@ App::App() {
 App::~App() {
     // Cleanup handled by unique_ptr
     m_renderer.reset();
-    // m_vulkanContext.reset();
 }
 
 void App::run() {
@@ -140,6 +137,16 @@ void App::update(double deltaTime) {
     if (!ImGui::GetIO().WantCaptureMouse && (buttons & SDL_BUTTON_RMASK)) {
          m_camera->rotate(xoffset * 0.2f, yoffset * 0.2f);
     }
+    
+    // Update Orbit Target if locked
+    if (m_lockedBody) {
+        // Calculate World Position
+        glm::vec3 worldPos = m_lockedBody->getWorldPosition(m_time->getSimulationTime());
+        // Apply visual distance scale (same as Renderer)
+        worldPos *= 10.0f;
+        
+        m_camera->updateOrbitTarget(worldPos);
+    }
 }
 
 void App::render() {
@@ -158,25 +165,32 @@ void App::render() {
                 m_time->setPaused(!m_time->isPaused());
             }
 
-            // Orbit Lines Toggle (Needs boolean in App or passed to Renderer... actually simpler to just redraw them or not, but Renderer logic controls draw loop)
-            // For now, Orbit Lines are always on in Renderer. I need to expose a setter in RenderInterface or cast.
-            // Let's skip orbit toggle for this exact step or implement it via a mutable boolean if I can.
-            
             // Focus Target
             if (ImGui::BeginCombo("Focus", "Select Body")) {
-                if (ImGui::Selectable("Sun")) m_camera->setOrbitTarget(glm::vec3(0.0f), 20.0f);
-                // List planets
+                if (ImGui::Selectable("Sun")) {
+                    m_camera->setOrbitTarget(glm::vec3(0.0f), 20.0f);
+                    m_lockedBody = m_solarSystem->getSun();
+                }
+                
                 auto& bodies = m_solarSystem->getBodies();
                 for (const auto& body : bodies) {
-                    if (body->getName() == "Sun") continue; // Already added
-                    if (ImGui::Selectable(body->getName().c_str())) {
-                        // Problem: We need position of body to focus. But position changes!
-                        // Camera needs to TRACK the body.
-                        // m_camera->setOrbitTarget(position, ...) only sets a static point.
-                        // Camera needs a "Follow Target" mode.
-                        // For v1 UI, let's just set the CURRENT position as target (simpler).
-                        m_camera->setOrbitTarget(body->getPosition(m_time->getSimulationTime()) * 10.0f, 5.0f);
-                    }
+                    if (body->getName() == "Sun") continue;
+                    
+                    // Root bodies
+                     if (ImGui::Selectable(body->getName().c_str())) {
+                         glm::vec3 worldPos = body->getWorldPosition(m_time->getSimulationTime()) * 10.0f;
+                         m_camera->setOrbitTarget(worldPos, 5.0f);
+                         m_lockedBody = body.get();
+                     }
+                     // Children (Moons)
+                     for (const auto& child : body->getChildren()) {
+                         std::string label = "  " + child->getName();
+                         if (ImGui::Selectable(label.c_str())) {
+                             glm::vec3 worldPos = child->getWorldPosition(m_time->getSimulationTime()) * 10.0f;
+                             m_camera->setOrbitTarget(worldPos, 2.0f);
+                             m_lockedBody = child.get();
+                         }
+                     }
                 }
                 ImGui::EndCombo();
             }

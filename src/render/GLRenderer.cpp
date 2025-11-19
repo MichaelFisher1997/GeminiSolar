@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
+#include <functional>
 #include <glm/gtc/type_ptr.hpp>
 
 #ifndef M_PI
@@ -201,7 +202,7 @@ void GLRenderer::createOrbitMesh() {
 }
 
 void GLRenderer::drawOrbit(float radius, const glm::vec3& color, const glm::mat4& view, const glm::mat4& proj) {
-    (void)view; // Not used directly, passed as uniforms once per frame usually, but here we assume they are set
+    (void)view; 
     (void)proj;
 
     glUniform1i(m_isSunLoc, 1); 
@@ -332,44 +333,78 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem, const Camera
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = camera.getProjectionMatrix();
     
-    proj[1][1] *= -1; // Vulkan fix flip (assuming camera still does this)
+    proj[1][1] *= -1; // Vulkan fix flip
 
     glUniformMatrix4fv(m_viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(m_projLoc, 1, GL_FALSE, glm::value_ptr(proj));
 
     const auto& bodies = solarSystem.getBodies();
     float visualDistanceScale = 10.0f;
-    
-    for (const auto& body : bodies) {
-         if (body->getName() == "Sun") continue;
-         float orbitRadius = body->getOrbitalParams().semiMajorAxis * visualDistanceScale;
-         drawOrbit(orbitRadius, glm::vec3(0.2f, 0.2f, 0.2f), view, proj);
-    }
 
-    glBindVertexArray(m_vao);
-
-    for (const auto& body : bodies) {
-        glm::vec3 pos = body->getPosition(simulationTime);
-        double scale = body->getRadius();
+    // Helper for recursive body rendering
+    std::function<void(const Simulation::CelestialBody&, glm::mat4)> drawBodyRecursive;
+    drawBodyRecursive = [&](const Simulation::CelestialBody& body, glm::mat4 parentTransform) {
+        glm::vec3 localPos = body.getPosition(simulationTime);
         
+        // Visual scale logic
         float visualRadiusScale = 0.5f;
         bool isSun = false;
-        if (body->getName() == "Sun") {
-            visualRadiusScale = 1.5f / 109.0f; 
-            isSun = true;
+        if (body.getName() == "Sun") {
+             visualRadiusScale = 1.5f / 109.0f; 
+             isSun = true;
         }
 
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, pos * visualDistanceScale);
-        model = glm::scale(model, glm::vec3(static_cast<float>(scale) * visualRadiusScale));
-
-        glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(m_isSunLoc, isSun ? 1 : 0);
+        // Position matrix (Orbit position relative to parent)
+        glm::mat4 posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
         
-        glm::vec3 color = body->getColor(); 
-        glUniform3fv(m_colorLoc, 1, glm::value_ptr(color));
+        // Draw Body
+        {
+            double scale = body.getRadius();
+            glm::mat4 model = glm::scale(posMatrix, glm::vec3(static_cast<float>(scale) * visualRadiusScale));
 
-        glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+            glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform1i(m_isSunLoc, isSun ? 1 : 0);
+            
+            glm::vec3 color = body.getColor(); 
+            glUniform3fv(m_colorLoc, 1, glm::value_ptr(color));
+
+            glBindVertexArray(m_vao);
+            glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+        }
+        
+        // Draw Orbits for children
+        for (const auto& child : body.getChildren()) {
+             float orbitRadius = child->getOrbitalParams().semiMajorAxis * visualDistanceScale;
+             
+             // Inline drawOrbit logic here for simplicity in recursion
+             glUniform1i(m_isSunLoc, 1); 
+             glUniform3fv(m_colorLoc, 1, glm::value_ptr(glm::vec3(0.2f))); 
+             
+             glm::mat4 orbitModel = glm::scale(posMatrix, glm::vec3(orbitRadius));
+             glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(orbitModel));
+             
+             glBindVertexArray(m_orbitVao);
+             glDrawArrays(GL_LINE_LOOP, 0, 128);
+        }
+        
+        // Recurse
+        for (const auto& child : body.getChildren()) {
+            drawBodyRecursive(*child, posMatrix);
+        }
+    };
+
+    glm::mat4 identity = glm::mat4(1.0f);
+
+    // Draw Sun and Primary Planets (Roots)
+    for (const auto& body : bodies) {
+        // If it's a root body (Planets/Sun), it orbits (0,0,0).
+        // Draw its orbit first (if not Sun)
+        if (body->getName() != "Sun") {
+             float orbitRadius = body->getOrbitalParams().semiMajorAxis * visualDistanceScale;
+             drawOrbit(orbitRadius, glm::vec3(0.2f, 0.2f, 0.2f), view, proj);
+        }
+        
+        drawBodyRecursive(*body, identity);
     }
     
     glBindVertexArray(0);

@@ -17,4 +17,17 @@ glm::vec3 CelestialBody::getPosition(double time) const {
     return OrbitModel::calculatePosition(m_orbitalParams, time);
 }
 
+void CelestialBody::addChild(std::unique_ptr<CelestialBody> child) {
+    child->setParent(this);
+    m_children.push_back(std::move(child));
+}
+
+glm::vec3 CelestialBody::getWorldPosition(double time) const {
+    glm::vec3 localPos = getPosition(time);
+    if (m_parent) {
+        return m_parent->getWorldPosition(time) + localPos;
+    }
+    return localPos;
+}
+
 } // namespace Simulation

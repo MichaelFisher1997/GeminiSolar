@@ -85,6 +85,13 @@ void Camera::setOrbitTarget(const glm::vec3& target, float distance) {
     updateViewMatrix();
 }
 
+void Camera::updateOrbitTarget(const glm::vec3& target) {
+    if (m_orbitMode) {
+        m_orbitTarget = target;
+        updateViewMatrix();
+    }
+}
+
 void Camera::orbit(float deltaYaw, float deltaPitch) {
     // In orbit mode, yaw/pitch control position around target
     m_yaw -= deltaYaw; // Invert for natural orbit feel
