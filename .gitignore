@@ -4,3 +4,5 @@ build/
 result
 *.swp
 .DS_Store
+imgui.ini
+.next/

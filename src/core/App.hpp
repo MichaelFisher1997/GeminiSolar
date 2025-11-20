@@ -26,6 +26,8 @@ private:
     std::unique_ptr<Render::Camera> m_camera;
     std::unique_ptr<Render::RenderInterface> m_renderer;
     
+    const Simulation::CelestialBody* m_lockedBody = nullptr;
+    
     bool m_isRunning = false;
 };
 

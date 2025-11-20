@@ -26,6 +26,7 @@ public:
     void lookAt(const glm::vec3& target);
     
     void setOrbitTarget(const glm::vec3& target, float distance);
+    void updateOrbitTarget(const glm::vec3& target);
     void orbit(float deltaYaw, float deltaPitch);
     void zoom(float delta);
 

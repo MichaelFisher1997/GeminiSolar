@@ -32,32 +32,25 @@ glm::vec3 OrbitModel::calculatePosition(const OrbitalParams& params, double time
     double r = params.semiMajorAxis * (1.0 - params.eccentricity * std::cos(E));
 
     // Position in orbital plane (x', y', 0)
-    // We assume periapsis is at angle 0 for simplicity unless argument of periapsis is added
-    double x_orb = r * std::cos(v);
-    double y_orb = r * std::sin(v);
+    // Calculate position with full elements: argument of periapsis (w)
+    double u = v + params.argumentPeriapsis; // Argument of Latitude
 
-    // Rotate by inclination (i) around x-axis (simple model, usually involves Longitude of Ascending Node too)
-    // For full orbital elements we need: Longitude of Ascending Node (Omega), Argument of Periapsis (w), Inclination (i)
-    // Let's assume Omega=0 and w=0 for simplicity as per spec "inclinations simplified"
-    
-    // Rotate around X axis by inclination
-    double x_inc = x_orb;
-    double y_inc = y_orb * std::cos(params.inclination);
-    double z_inc = y_orb * std::sin(params.inclination);
+    double x_orb = r * std::cos(u);
+    double y_orb = r * std::sin(u);
 
-    return glm::vec3(static_cast<float>(x_inc), static_cast<float>(z_inc), static_cast<float>(y_inc)); 
-    // Note: We map z_inc to y (up) and y_inc to z (depth) usually in 3D graphics, 
-    // but standard orbital plane is XY. Let's assume Y is up in our engine.
-    // So orbit is in XZ plane primarily.
-    // Standard physics: XY plane. 
-    // OpenGL/Vulkan: Y up, -Z forward.
-    
-    // Let's map:
-    // Orbit X -> World X
-    // Orbit Y -> World Z
-    // Orbit Z (inclination lift) -> World Y
-    
-    return glm::vec3(static_cast<float>(x_inc), static_cast<float>(z_inc), static_cast<float>(y_inc));
+    // Rotate by Longitude of Ascending Node (Omega) and Inclination (i)
+    // Standard 3D Rotation:
+    // x = r * ( cos(Omega) * cos(u) - sin(Omega) * sin(u) * cos(i) )
+    // y = r * ( sin(Omega) * cos(u) + cos(Omega) * sin(u) * cos(i) )
+    // z = r * ( sin(i) * sin(u) )
+
+    double x_space = r * (std::cos(params.longitudeAscendingNode) * std::cos(u) - std::sin(params.longitudeAscendingNode) * std::sin(u) * std::cos(params.inclination));
+    double y_space = r * (std::sin(params.longitudeAscendingNode) * std::cos(u) + std::cos(params.longitudeAscendingNode) * std::sin(u) * std::cos(params.inclination));
+    double z_space = r * (std::sin(params.inclination) * std::sin(u));
+
+    // Map to World Coordinates (Y-up)
+    // Standard physics is Z-up usually. Here we map z_space -> Y (up).
+    return glm::vec3(static_cast<float>(x_space), static_cast<float>(z_space), static_cast<float>(y_space));
 }
 
 } // namespace Simulation

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
+#include <functional>
 #include <glm/gtc/type_ptr.hpp>
 
 #ifndef M_PI
@@ -13,8 +14,6 @@ namespace Render {
 GLRenderer::GLRenderer(Platform::SDLWindow& window) 
     : m_window(window) {
     
-    // Set GL attributes BEFORE context creation (strictly speaking should be before window creation, but SDL3 might allow late context creation if window is compatible)
-    // Ideally SDLWindow should allow setting flags. But assuming we can just try.
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -26,7 +25,6 @@ GLRenderer::GLRenderer(Platform::SDLWindow& window)
 
     SDL_GL_MakeCurrent(window.getHandle(), m_glContext);
     
-    // Init GLEW
     glewExperimental = GL_TRUE; 
     GLenum err = glewInit();
     if (GLEW_OK != err) {
@@ -34,12 +32,17 @@ GLRenderer::GLRenderer(Platform::SDLWindow& window)
     }
 
     initGL();
+    initImGui();
     createShaders();
     createSphereMesh();
     createOrbitMesh();
 }
 
 GLRenderer::~GLRenderer() {
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+
     glDeleteVertexArrays(1, &m_vao);
     glDeleteBuffers(1, &m_vbo);
     glDeleteBuffers(1, &m_ebo);
@@ -53,8 +56,19 @@ GLRenderer::~GLRenderer() {
 
 void GLRenderer::initGL() {
     glEnable(GL_DEPTH_TEST);
-    // Ensure color is BLACK
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+}
+
+void GLRenderer::initImGui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplSDL3_InitForOpenGL(m_window.getHandle(), m_glContext);
+    ImGui_ImplOpenGL3_Init("#version 330");
 }
 
 void GLRenderer::createShaders() {
@@ -89,20 +103,17 @@ void GLRenderer::createShaders() {
         uniform int isSun; // 1 if Sun, 0 otherwise
 
         void main() {
-            // Special case for Sun: Unlit bright color
             if (isSun == 1) {
                 FragColor = vec4(objectColor, 1.0);
                 return;
             }
 
-            // Ambient
             float ambientStrength = 0.2;
             vec3 lightColor = vec3(1.0, 1.0, 1.0);
             vec3 ambient = ambientStrength * lightColor;
   
-            // Diffuse 
             vec3 norm = normalize(Normal);
-            vec3 lightPos = vec3(0.0, 0.0, 0.0); // Sun at origin
+            vec3 lightPos = vec3(0.0, 0.0, 0.0); 
             vec3 lightDir = normalize(lightPos - FragPos);
             float diff = max(dot(norm, lightDir), 0.0);
             vec3 diffuse = diff * lightColor;
@@ -154,19 +165,15 @@ void GLRenderer::createShaders() {
 }
 
 void GLRenderer::createOrbitMesh() {
-    // Create a circle line loop
     std::vector<float> vertices;
     const int segments = 128;
     for (int i = 0; i <= segments; ++i) {
         float theta = 2.0f * M_PI * float(i) / float(segments);
         float x = cosf(theta);
         float z = sinf(theta);
-        // XZ plane circle
         vertices.push_back(x);
-        vertices.push_back(0.0f); // Y
+        vertices.push_back(0.0f);
         vertices.push_back(z);
-        
-        // Color/Normal dummies
         vertices.push_back(0.3f); vertices.push_back(0.3f); vertices.push_back(0.3f);
         vertices.push_back(0.0f); vertices.push_back(1.0f); vertices.push_back(0.0f);
     }
@@ -178,7 +185,6 @@ void GLRenderer::createOrbitMesh() {
     glBindBuffer(GL_ARRAY_BUFFER, m_orbitVbo);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
     
-    // Attribs
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(3 * sizeof(float)));
@@ -190,9 +196,9 @@ void GLRenderer::createOrbitMesh() {
 }
 
 void GLRenderer::drawOrbit(float radius, const glm::vec3& color, const glm::mat4& view, const glm::mat4& proj) {
-    (void)view;
+    (void)view; 
     (void)proj;
-    // Use same shader but with IsSun=1 (unlit) behavior to draw flat color lines
+
     glUniform1i(m_isSunLoc, 1); 
     glUniform3fv(m_colorLoc, 1, glm::value_ptr(color));
     
@@ -207,7 +213,6 @@ void GLRenderer::drawOrbit(float radius, const glm::vec3& color, const glm::mat4
 }
 
 void GLRenderer::createSphereMesh() {
-    // Same procedural sphere logic as Mesh.cpp roughly
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
 
@@ -215,8 +220,8 @@ void GLRenderer::createSphereMesh() {
     const int stackCount = 32;
     float radius = 1.0f;
 
-    float x, y, z, xy;                              // vertex position
-    float nx, ny, nz, lengthInv = 1.0f / radius;    // vertex normal
+    float x, y, z, xy;
+    float nx, ny, nz, lengthInv = 1.0f / radius;
 
     float sectorStep = 2 * M_PI / sectorCount;
     float stackStep = M_PI / stackCount;
@@ -239,17 +244,14 @@ void GLRenderer::createSphereMesh() {
             ny = y * lengthInv;
             nz = z * lengthInv;
 
-            // Pos
             vertices.push_back(x);
-            vertices.push_back(z); // Swap Y/Z to match Vulkan coord system preference if needed, but standard GL is Y-up
+            vertices.push_back(z);
             vertices.push_back(y);
             
-            // Color (dummy)
             vertices.push_back(1.0f);
             vertices.push_back(1.0f);
             vertices.push_back(1.0f);
 
-            // Normal
             vertices.push_back(nx);
             vertices.push_back(nz);
             vertices.push_back(ny);
@@ -264,15 +266,12 @@ void GLRenderer::createSphereMesh() {
 
         for(int j = 0; j < sectorCount; ++j, ++k1, ++k2)
         {
-            if(i != 0)
-            {
+            if(i != 0) {
                 indices.push_back(k1);
                 indices.push_back(k2);
                 indices.push_back(k1 + 1);
             }
-
-            if(i != (stackCount - 1))
-            {
+            if(i != (stackCount - 1)) {
                 indices.push_back(k1 + 1);
                 indices.push_back(k2);
                 indices.push_back(k2 + 1);
@@ -294,85 +293,113 @@ void GLRenderer::createSphereMesh() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-    // Pos
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    // Color
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    // Normal
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
 }
 
-void GLRenderer::render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime) {
+void GLRenderer::render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime, std::function<void()> uiCallback) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+    
+    if (uiCallback) {
+        uiCallback();
+    }
+    
+    ImGui::Render();
     
     glUseProgram(m_shaderProgram);
 
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = camera.getProjectionMatrix();
     
-    proj[1][1] *= -1; // Vulkan fix flip
+    proj[1][1] *= -1; 
 
     glUniformMatrix4fv(m_viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(m_projLoc, 1, GL_FALSE, glm::value_ptr(proj));
 
     const auto& bodies = solarSystem.getBodies();
-    
-    // 1. Draw Orbits first (transparent-ish or just lines)
-    // We scale orbit radius by visualDistanceScale (10.0)
-    // Orbit params are in body->getOrbitalParams().semiMajorAxis
-    // But SolarSystem already scaled them? No, SolarSystem.cpp used rough AU.
-    // Wait, SolarSystem.cpp initialized with:
-    // Mercury 0.39, Venus 0.72, Earth 1.0, etc.
-    // And renderer scales position by 10.0f.
-    // So orbit radius should be semiMajorAxis * 10.0f.
-    
-    float visualDistanceScale = 10.0f;
-    
-    for (const auto& body : bodies) {
-         if (body->getName() == "Sun") continue;
-         
-         float orbitRadius = body->getOrbitalParams().semiMajorAxis * visualDistanceScale;
-         // Dim grey for orbits
-         drawOrbit(orbitRadius, glm::vec3(0.2f, 0.2f, 0.2f), view, proj);
-    }
+    float visualDistanceScale = solarSystem.getSystemScale();
+    float visualPlanetScale = solarSystem.getPlanetScale(); 
 
-    // 2. Draw Planets
-    glBindVertexArray(m_vao);
-
-    for (const auto& body : bodies) {
-        glm::vec3 pos = body->getPosition(simulationTime);
-        double scale = body->getRadius();
+    // Helper for recursive body rendering
+    std::function<void(const Simulation::CelestialBody&, glm::mat4)> drawBodyRecursive;
+    drawBodyRecursive = [&](const Simulation::CelestialBody& body, glm::mat4 parentTransform) {
+        glm::vec3 localPos = body.getPosition(simulationTime);
         
-        float visualRadiusScale = 0.5f;
+        float visualRadiusScale = visualPlanetScale; 
         bool isSun = false;
-        if (body->getName() == "Sun") {
-            // Override Sun scale to be reasonable (radius 1.5 units)
-            // 109.0 * x = 1.5 => x = 1.5/109.0 = 0.013
-            visualRadiusScale = 1.5f / 109.0f; 
-            isSun = true;
+        if (body.getName() == solarSystem.getSun()->getName()) { 
+             visualRadiusScale = 1.5f / body.getRadius(); 
+             isSun = true;
         }
 
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, pos * visualDistanceScale);
-        model = glm::scale(model, glm::vec3(static_cast<float>(scale) * visualRadiusScale));
-
-        glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(m_isSunLoc, isSun ? 1 : 0);
+        glm::mat4 posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
         
-        glm::vec3 color = body->getColor(); 
-        glUniform3fv(m_colorLoc, 1, glm::value_ptr(color));
+        // Draw Body
+        {
+            double scale = body.getRadius();
+            glm::mat4 model = glm::scale(posMatrix, glm::vec3(static_cast<float>(scale) * visualRadiusScale));
 
-        glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+            glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform1i(m_isSunLoc, isSun ? 1 : 0);
+            
+            glm::vec3 color = body.getColor(); 
+            glUniform3fv(m_colorLoc, 1, glm::value_ptr(color));
+
+            glBindVertexArray(m_vao);
+            glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+        }
+        
+        // Draw Orbits for children
+        for (const auto& child : body.getChildren()) {
+             float orbitRadius = child->getOrbitalParams().semiMajorAxis * visualDistanceScale;
+             
+             glUniform1i(m_isSunLoc, 1); 
+             glUniform3fv(m_colorLoc, 1, glm::value_ptr(glm::vec3(0.2f))); 
+             
+             glm::mat4 orbitModel = glm::scale(posMatrix, glm::vec3(orbitRadius));
+             glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(orbitModel));
+             
+             glBindVertexArray(m_orbitVao);
+             glDrawArrays(GL_LINE_LOOP, 0, 128);
+        }
+        
+        // Recurse
+        for (const auto& child : body.getChildren()) {
+            drawBodyRecursive(*child, posMatrix);
+        }
+    };
+
+    glm::mat4 identity = glm::mat4(1.0f);
+
+    // Draw Sun and Primary Planets (Roots)
+    for (const auto& body : bodies) {
+        if (body.get() != solarSystem.getSun()) {
+             float orbitRadius = body->getOrbitalParams().semiMajorAxis * visualDistanceScale;
+             drawOrbit(orbitRadius, glm::vec3(0.2f, 0.2f, 0.2f), view, proj);
+        }
+        
+        drawBodyRecursive(*body, identity);
     }
     
     glBindVertexArray(0);
+    
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     SDL_GL_SwapWindow(m_window.getHandle());
+}
+
+void GLRenderer::resize(int width, int height) {
+    glViewport(0, 0, width, height);
 }
 
 } // namespace Render

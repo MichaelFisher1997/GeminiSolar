@@ -8,6 +8,10 @@
 #include <vector>
 #include <glm/glm.hpp>
 
+#include "imgui.h"
+#include "backends/imgui_impl_sdl3.h"
+#include "backends/imgui_impl_opengl3.h"
+
 namespace Render {
 
 class GLRenderer : public RenderInterface {
@@ -15,10 +19,12 @@ public:
     GLRenderer(Platform::SDLWindow& window);
     ~GLRenderer() override;
 
-    void render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime) override;
+    void render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime, std::function<void()> uiCallback = nullptr) override;
+    void resize(int width, int height) override;
 
 private:
     void initGL();
+    void initImGui();
     void createShaders();
     void createSphereMesh();
 
