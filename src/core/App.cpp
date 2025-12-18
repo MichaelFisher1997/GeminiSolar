@@ -263,10 +263,27 @@ void App::renderUI() {
         }
 
         if (ImGui::CollapsingHeader("Time Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-            float timeScale = static_cast<float>(m_time->getTimeScale());
-            if (ImGui::SliderFloat("Speed", &timeScale, 0.0f, 1.0f, "%.4f")) {
-                m_time->setTimeScale(timeScale);
+            // Internal scale where 1.0 = 1 day per real second
+            const double DAY_IN_YEARS = 1.0 / 365.25;
+            const double SECOND_IN_YEARS = 1.0 / (365.25 * 86400.0);
+            
+            float multiplier = static_cast<float>(m_time->getTimeScale() / DAY_IN_YEARS);
+            
+            // Logarithmic-like slider for better sensitivity at low speeds
+            if (ImGui::SliderFloat("Speed (Days/s)", &multiplier, 0.0f, 400.0f, "%.4f", ImGuiSliderFlags_Logarithmic)) {
+                m_time->setTimeScale(static_cast<double>(multiplier) * DAY_IN_YEARS);
             }
+            
+            ImGui::Text("Presets:");
+            if (ImGui::Button("IRL (Real-time)")) m_time->setTimeScale(SECOND_IN_YEARS);
+            ImGui::SameLine();
+            if (ImGui::Button("1x")) m_time->setTimeScale(1.0 * DAY_IN_YEARS);
+            ImGui::SameLine();
+            if (ImGui::Button("2x")) m_time->setTimeScale(2.0 * DAY_IN_YEARS);
+            ImGui::SameLine();
+            if (ImGui::Button("4x")) m_time->setTimeScale(4.0 * DAY_IN_YEARS);
+            ImGui::SameLine();
+            if (ImGui::Button("100x")) m_time->setTimeScale(100.0 * DAY_IN_YEARS);
             
             if (ImGui::Button(m_time->isPaused() ? "Resume (P)" : "Pause (P)", ImVec2(-1, 0))) {
                 m_time->setPaused(!m_time->isPaused());
