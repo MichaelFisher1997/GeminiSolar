@@ -90,6 +90,19 @@ void Camera::handleMouseDrag(float deltaX, float deltaY) {
     m_targetPitch = std::clamp(m_targetPitch, -89.0f, 89.0f);
 }
 
+void Camera::handleMousePan(float deltaX, float deltaY) {
+    if (m_mode != CameraMode::Orbit) return;
+    
+    // Pan speed scales with distance
+    float panSpeed = m_orbitDistance * 0.001f;
+    
+    glm::vec3 panDelta = (m_right * (-deltaX * panSpeed)) + (m_up * (deltaY * panSpeed));
+    m_orbitTarget += panDelta;
+    
+    // If we were transitioning, stop it
+    m_isTransitioning = false;
+}
+
 void Camera::handleScroll(float delta) {
     if (m_mode == CameraMode::Orbit) {
         // Adaptive zoom speed based on distance

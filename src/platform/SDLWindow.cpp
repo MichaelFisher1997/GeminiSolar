@@ -86,6 +86,11 @@ void SDLWindow::makeContextCurrent() {
 void SDLWindow::pollEvents(EventCallback callback) {
     SDL_Event sdlEvent;
     while (SDL_PollEvent(&sdlEvent)) {
+        // Forward raw event to ImGui if callback is set
+        if (m_rawEventCallback) {
+            m_rawEventCallback(sdlEvent);
+        }
+        
         WindowEvent event;
         
         switch (sdlEvent.type) {

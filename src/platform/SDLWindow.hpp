@@ -30,6 +30,13 @@ public:
     
     /// Create OpenGL context (call after construction)
     void createGLContext();
+    
+    /// Set a callback for raw SDL events (for ImGui)
+    using RawEventCallback = std::function<void(const SDL_Event&)>;
+    void setRawEventCallback(RawEventCallback callback) { m_rawEventCallback = callback; }
+
+private:
+    RawEventCallback m_rawEventCallback;
 
 private:
     SDL_Window* m_window = nullptr;

@@ -21,6 +21,9 @@ public:
                 double simulationTime, 
                 std::function<void()> uiCallback = nullptr) override;
     void resize(int width, int height) override;
+    
+    /// Forward SDL event to ImGui
+    void processEvent(const SDL_Event& event);
 
 private:
     void initGL();

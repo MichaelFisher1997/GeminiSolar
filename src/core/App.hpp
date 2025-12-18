@@ -6,7 +6,7 @@
 #include "core/Time.hpp"
 #include "simulation/SolarSystem.hpp"
 #include "render/Camera.hpp"
-#include "render/RenderInterface.hpp"
+#include "render/GLRenderer.hpp"
 
 namespace Core {
 
@@ -42,7 +42,7 @@ private:
     
     // Rendering
     std::unique_ptr<Render::Camera> m_camera;
-    std::unique_ptr<Render::RenderInterface> m_renderer;
+    std::unique_ptr<Render::GLRenderer> m_renderer;
     
     // State
     const Simulation::CelestialBody* m_lockedBody = nullptr;

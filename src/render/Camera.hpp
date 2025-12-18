@@ -26,6 +26,7 @@ public:
 
     // Input handling - call these based on user input
     void handleMouseDrag(float deltaX, float deltaY);
+    void handleMousePan(float deltaX, float deltaY);
     void handleScroll(float delta);
     void handleKeyMovement(float forward, float right, float up, float deltaTime);
     

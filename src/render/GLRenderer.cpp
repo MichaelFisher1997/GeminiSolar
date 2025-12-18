@@ -133,7 +133,6 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
     // Set view and projection matrices
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = camera.getProjectionMatrix();
-    proj[1][1] *= -1;  // Flip Y for OpenGL
     
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(proj));
@@ -221,6 +220,10 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
 void GLRenderer::resize(int width, int height) {
     glViewport(0, 0, width, height);
     LOG_DEBUG("GLRenderer", "Viewport resized to ", width, "x", height);
+}
+
+void GLRenderer::processEvent(const SDL_Event& event) {
+    m_uiManager->processEvent(event);
 }
 
 } // namespace Render
