@@ -30,7 +30,7 @@ public:
     
     void bind() const;
     void unbind() const;
-    void draw() const;
+    void draw(GLenum mode = GL_TRIANGLES) const;
     
     uint32_t getIndexCount() const { return m_indexCount; }
 

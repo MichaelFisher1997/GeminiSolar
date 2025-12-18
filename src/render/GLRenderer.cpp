@@ -41,68 +41,21 @@ void GLRenderer::loadShaders() {
         m_shaderManager->loadFromFiles(SHADER_PLANET, 
                                         "assets/shaders/planet.vert",
                                         "assets/shaders/planet.frag");
+        m_shaderManager->loadFromFiles(SHADER_ORBIT, 
+                                        "assets/shaders/orbit.vert",
+                                        "assets/shaders/orbit.frag");
+        m_shaderManager->loadFromFiles(SHADER_STARFIELD, 
+                                        "assets/shaders/starfield.vert",
+                                        "assets/shaders/starfield.frag");
     } catch (const std::exception& e) {
-        LOG_WARN("GLRenderer", "Failed to load shader files, using embedded shaders: ", e.what());
-        
-        // Embedded fallback shaders
-        const char* vertexShader = R"(
-            #version 330 core
-            layout (location = 0) in vec3 aPos;
-            layout (location = 1) in vec3 aColor; 
-            layout (location = 2) in vec3 aNormal;
-
-            out vec3 FragPos;
-            out vec3 Normal;
-
-            uniform mat4 model;
-            uniform mat4 view;
-            uniform mat4 projection;
-
-            void main() {
-                FragPos = vec3(model * vec4(aPos, 1.0));
-                Normal = mat3(transpose(inverse(model))) * aNormal;  
-                gl_Position = projection * view * vec4(FragPos, 1.0);
-            }
-        )";
-
-        const char* fragmentShader = R"(
-            #version 330 core
-            out vec4 FragColor;
-
-            in vec3 FragPos;
-            in vec3 Normal;
-
-            uniform vec3 objectColor;
-            uniform int isSun;
-
-            void main() {
-                if (isSun == 1) {
-                    FragColor = vec4(objectColor, 1.0);
-                    return;
-                }
-
-                float ambientStrength = 0.2;
-                vec3 lightColor = vec3(1.0, 1.0, 1.0);
-                vec3 ambient = ambientStrength * lightColor;
-
-                vec3 norm = normalize(Normal);
-                vec3 lightPos = vec3(0.0, 0.0, 0.0); 
-                vec3 lightDir = normalize(lightPos - FragPos);
-                float diff = max(dot(norm, lightDir), 0.0);
-                vec3 diffuse = diff * lightColor;
-                
-                vec3 result = (ambient + diffuse) * objectColor;
-                FragColor = vec4(result, 1.0);
-            }
-        )";
-        
-        m_shaderManager->loadFromSource(SHADER_PLANET, vertexShader, fragmentShader);
+        LOG_WARN("GLRenderer", "Failed to load some shader files, some features may be missing: ", e.what());
     }
 }
 
 void GLRenderer::createMeshes() {
-    m_sphereMesh = MeshFactory::createSphere(32, 32);
-    m_orbitMesh = MeshFactory::createCircle(128);
+    m_sphereMesh = MeshFactory::createSphere(48, 48);
+    m_orbitMesh = MeshFactory::createCircle(256);
+    m_starfieldMesh = MeshFactory::createSphere(16, 16); // Lower detail for starfield
     LOG_INFO("GLRenderer", "Meshes created");
 }
 
@@ -112,30 +65,37 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
                         std::function<void()> uiCallback) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
-    // Begin UI frame
+    // 1. Render Starfield
+    renderStarfield(camera);
+    
+    // 2. Begin UI frame (to collect layout before drawing objects)
     m_uiManager->beginFrame();
+    if (uiCallback) uiCallback();
     
-    // Run UI callback
-    if (uiCallback) {
-        uiCallback();
-    }
+    // 3. Render Solar System
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Get shader and uniforms
-    GLuint shader = m_shaderManager->getShader(SHADER_PLANET);
-    m_shaderManager->useShader(shader);
+    GLuint planetShader = m_shaderManager->getShader(SHADER_PLANET);
+    GLuint orbitShader = m_shaderManager->getShader(SHADER_ORBIT);
     
-    GLint modelLoc = m_shaderManager->getUniformLocation(shader, "model");
-    GLint viewLoc = m_shaderManager->getUniformLocation(shader, "view");
-    GLint projLoc = m_shaderManager->getUniformLocation(shader, "projection");
-    GLint colorLoc = m_shaderManager->getUniformLocation(shader, "objectColor");
-    GLint isSunLoc = m_shaderManager->getUniformLocation(shader, "isSun");
+    m_shaderManager->useShader(planetShader);
+    GLint modelLoc = m_shaderManager->getUniformLocation(planetShader, "model");
+    GLint viewLoc = m_shaderManager->getUniformLocation(planetShader, "view");
+    GLint projLoc = m_shaderManager->getUniformLocation(planetShader, "projection");
+    GLint colorLoc = m_shaderManager->getUniformLocation(planetShader, "objectColor");
+    GLint isSunLoc = m_shaderManager->getUniformLocation(planetShader, "isSun");
+    GLint timeLoc = m_shaderManager->getUniformLocation(planetShader, "time");
+    GLint viewPosLoc = m_shaderManager->getUniformLocation(planetShader, "viewPos");
     
-    // Set view and projection matrices
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = camera.getProjectionMatrix();
+    glm::vec3 viewPos = camera.getPosition();
     
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(proj));
+    glUniform3fv(viewPosLoc, 1, glm::value_ptr(viewPos));
+    glUniform1f(timeLoc, static_cast<float>(simulationTime));
     
     const auto& bodies = solarSystem.getBodies();
     float visualDistanceScale = solarSystem.getSystemScale();
@@ -145,9 +105,9 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
     std::function<void(const Simulation::CelestialBody&, glm::mat4)> drawBodyRecursive;
     drawBodyRecursive = [&](const Simulation::CelestialBody& body, glm::mat4 parentTransform) {
         glm::vec3 localPos = body.getPosition(simulationTime);
-        
         float visualRadiusScale = visualPlanetScale;
         bool isSun = false;
+        
         if (body.getName() == solarSystem.getSun()->getName()) {
             visualRadiusScale = 1.5f / static_cast<float>(body.getRadius());
             isSun = true;
@@ -155,66 +115,82 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
         
         glm::mat4 posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
         
-        // Draw body
+        // Draw Orbits
+        if (m_showOrbits) {
+            glUseProgram(orbitShader);
+            GLint oModelLoc = m_shaderManager->getUniformLocation(orbitShader, "model");
+            GLint oViewLoc = m_shaderManager->getUniformLocation(orbitShader, "view");
+            GLint oProjLoc = m_shaderManager->getUniformLocation(orbitShader, "projection");
+            GLint oColorLoc = m_shaderManager->getUniformLocation(orbitShader, "orbitColor");
+            GLint oOpacityLoc = m_shaderManager->getUniformLocation(orbitShader, "opacity");
+            
+            glUniformMatrix4fv(oViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(oProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
+            
+            for (const auto& child : body.getChildren()) {
+                float orbitRadius = static_cast<float>(child->getOrbitalParams().semiMajorAxis) * visualDistanceScale;
+                glm::mat4 orbitModel = glm::scale(posMatrix, glm::vec3(orbitRadius));
+                glUniformMatrix4fv(oModelLoc, 1, GL_FALSE, glm::value_ptr(orbitModel));
+                glUniform3f(oColorLoc, 0.4f, 0.4f, 0.5f);
+                glUniform1f(oOpacityLoc, 0.2f);
+                
+                m_orbitMesh->draw(GL_LINE_LOOP);
+            }
+            glUseProgram(planetShader);
+        }
+
+        // Draw Body
         {
             float scale = static_cast<float>(body.getRadius()) * visualRadiusScale;
             glm::mat4 model = glm::scale(posMatrix, glm::vec3(scale));
-            
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
             glUniform1i(isSunLoc, isSun ? 1 : 0);
             glUniform3fv(colorLoc, 1, glm::value_ptr(body.getColor()));
-            
             m_sphereMesh->draw();
         }
         
-        // Draw orbit lines for children
-        for (const auto& child : body.getChildren()) {
-            float orbitRadius = static_cast<float>(child->getOrbitalParams().semiMajorAxis) * visualDistanceScale;
-            
-            glUniform1i(isSunLoc, 1);  // Use unlit for orbit lines
-            glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.2f)));
-            
-            glm::mat4 orbitModel = glm::scale(posMatrix, glm::vec3(orbitRadius));
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(orbitModel));
-            
-            m_orbitMesh->bind();
-            glDrawArrays(GL_LINE_LOOP, 0, 129);  // 128 segments + 1
-        }
-        
-        // Recurse for children
         for (const auto& child : body.getChildren()) {
             drawBodyRecursive(*child, posMatrix);
         }
     };
     
     glm::mat4 identity = glm::mat4(1.0f);
-    
-    // Draw all root bodies and their orbit lines
     for (const auto& body : bodies) {
-        // Draw orbit line for planets (not for sun)
-        if (body.get() != solarSystem.getSun()) {
+        if (m_showOrbits && body.get() != solarSystem.getSun()) {
+            glUseProgram(orbitShader);
             float orbitRadius = static_cast<float>(body->getOrbitalParams().semiMajorAxis) * visualDistanceScale;
-            
-            glUniform1i(isSunLoc, 1);
-            glUniform3fv(colorLoc, 1, glm::value_ptr(glm::vec3(0.2f)));
-            
             glm::mat4 orbitModel = glm::scale(identity, glm::vec3(orbitRadius));
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(orbitModel));
-            
-            m_orbitMesh->bind();
-            glDrawArrays(GL_LINE_LOOP, 0, 129);
+            glUniformMatrix4fv(m_shaderManager->getUniformLocation(orbitShader, "model"), 1, GL_FALSE, glm::value_ptr(orbitModel));
+            glUniformMatrix4fv(m_shaderManager->getUniformLocation(orbitShader, "view"), 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(m_shaderManager->getUniformLocation(orbitShader, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
+            glUniform3f(m_shaderManager->getUniformLocation(orbitShader, "orbitColor"), 0.3f, 0.3f, 0.4f);
+            glUniform1f(m_shaderManager->getUniformLocation(orbitShader, "opacity"), 0.3f);
+            m_orbitMesh->draw(GL_LINE_LOOP);
+            glUseProgram(planetShader);
         }
-        
         drawBodyRecursive(*body, identity);
     }
     
-    m_sphereMesh->unbind();
-    
-    // End UI frame and render
+    glDisable(GL_BLEND);
     m_uiManager->endFrame();
-    
-    // Swap buffers
     m_window.swapBuffers();
+}
+
+void GLRenderer::renderStarfield(const Camera& camera) {
+    glDepthMask(GL_FALSE);
+    GLuint shader = m_shaderManager->getShader(SHADER_STARFIELD);
+    m_shaderManager->useShader(shader);
+    
+    glm::mat4 view = camera.getViewMatrix();
+    glm::mat4 proj = camera.getProjectionMatrix();
+    glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(100.0f)); // Scale doesn't matter much for infinite background
+    
+    glUniformMatrix4fv(m_shaderManager->getUniformLocation(shader, "model"), 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(m_shaderManager->getUniformLocation(shader, "view"), 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(m_shaderManager->getUniformLocation(shader, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
+    
+    m_starfieldMesh->draw();
+    glDepthMask(GL_TRUE);
 }
 
 void GLRenderer::resize(int width, int height) {

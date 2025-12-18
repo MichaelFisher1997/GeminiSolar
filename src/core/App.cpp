@@ -298,6 +298,13 @@ void App::renderUI() {
                 m_lockedBody = nullptr;
             }
         }
+
+        if (ImGui::CollapsingHeader("Visual Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+            bool showOrbits = m_renderer->isShowOrbits();
+            if (ImGui::Checkbox("Show Orbital Rings", &showOrbits)) {
+                m_renderer->setShowOrbits(showOrbits);
+            }
+        }
     }
     ImGui::End();
 

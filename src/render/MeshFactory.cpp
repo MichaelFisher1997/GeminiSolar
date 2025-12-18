@@ -91,9 +91,9 @@ void GLMesh::unbind() const {
     glBindVertexArray(0);
 }
 
-void GLMesh::draw() const {
+void GLMesh::draw(GLenum mode) const {
     glBindVertexArray(m_vao);
-    glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+    glDrawElements(mode, m_indexCount, GL_UNSIGNED_INT, 0);
 }
 
 // MeshFactory implementation

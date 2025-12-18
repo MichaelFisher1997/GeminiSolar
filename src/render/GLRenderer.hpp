@@ -25,10 +25,14 @@ public:
     /// Forward SDL event to ImGui
     void processEvent(const SDL_Event& event);
 
+    void setShowOrbits(bool show) { m_showOrbits = show; }
+    bool isShowOrbits() const { return m_showOrbits; }
+
 private:
     void initGL();
     void loadShaders();
     void createMeshes();
+    void renderStarfield(const Camera& camera);
 
     Platform::SDLWindow& m_window;
     
@@ -39,9 +43,14 @@ private:
     // Meshes
     std::unique_ptr<GLMesh> m_sphereMesh;
     std::unique_ptr<GLMesh> m_orbitMesh;
+    std::unique_ptr<GLMesh> m_starfieldMesh;
+    
+    bool m_showOrbits = true;
     
     // Shader names
     static constexpr const char* SHADER_PLANET = "planet";
+    static constexpr const char* SHADER_ORBIT = "orbit";
+    static constexpr const char* SHADER_STARFIELD = "starfield";
 };
 
 } // namespace Render
