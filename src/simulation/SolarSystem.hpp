@@ -22,6 +22,8 @@ public:
     float getPlanetScale() const { return m_planetScale; }
 
 private:
+    void loadFallbackSolarSystem();
+    
     std::vector<std::unique_ptr<CelestialBody>> m_bodies;
     std::string m_currentSystemName;
     float m_systemScale = 10.0f; 

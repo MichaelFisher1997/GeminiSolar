@@ -45,3 +45,11 @@ foreach(SHADER ${SHADER_FILES})
     get_filename_component(FILENAME ${SHADER} NAME)
     configure_file(${SHADER} "${CMAKE_BINARY_DIR}/assets/shaders/${FILENAME}" COPYONLY)
 endforeach()
+
+# Copy system JSON files to build directory for runtime loading
+file(GLOB SYSTEM_FILES "assets/systems/*.json")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/assets/systems")
+foreach(SYSTEM ${SYSTEM_FILES})
+    get_filename_component(FILENAME ${SYSTEM} NAME)
+    configure_file(${SYSTEM} "${CMAKE_BINARY_DIR}/assets/systems/${FILENAME}" COPYONLY)
+endforeach()

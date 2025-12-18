@@ -1,0 +1,107 @@
+{
+  "name": "Kepler-11",
+  "scale": {
+    "system": 40.0,
+    "planet": 0.3
+  },
+  "bodies": [
+    {
+      "name": "Kepler-11",
+      "radius": 119.0,
+      "color": [1.0, 1.0, 0.0],
+      "orbit": {
+        "semiMajorAxis": 0.0,
+        "eccentricity": 0.0,
+        "inclination": 0.0,
+        "period": 1.0,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "b",
+      "radius": 2.0,
+      "color": [0.7, 0.7, 0.7],
+      "orbit": {
+        "semiMajorAxis": 0.091,
+        "eccentricity": 0.0,
+        "inclination": 89.0,
+        "period": 0.028,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "c",
+      "radius": 3.1,
+      "color": [0.6, 0.6, 0.6],
+      "orbit": {
+        "semiMajorAxis": 0.106,
+        "eccentricity": 0.0,
+        "inclination": 89.0,
+        "period": 0.035,
+        "meanAnomaly": 1.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "d",
+      "radius": 3.4,
+      "color": [0.6, 0.6, 0.6],
+      "orbit": {
+        "semiMajorAxis": 0.159,
+        "eccentricity": 0.0,
+        "inclination": 89.0,
+        "period": 0.061,
+        "meanAnomaly": 2.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "e",
+      "radius": 4.5,
+      "color": [0.6, 0.6, 0.6],
+      "orbit": {
+        "semiMajorAxis": 0.194,
+        "eccentricity": 0.0,
+        "inclination": 89.0,
+        "period": 0.087,
+        "meanAnomaly": 3.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "f",
+      "radius": 2.6,
+      "color": [0.6, 0.6, 0.6],
+      "orbit": {
+        "semiMajorAxis": 0.25,
+        "eccentricity": 0.0,
+        "inclination": 89.0,
+        "period": 0.12,
+        "meanAnomaly": 4.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "g",
+      "radius": 3.6,
+      "color": [0.6, 0.6, 0.6],
+      "orbit": {
+        "semiMajorAxis": 0.46,
+        "eccentricity": 0.0,
+        "inclination": 89.0,
+        "period": 0.32,
+        "meanAnomaly": 5.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    }
+  ]
+}
