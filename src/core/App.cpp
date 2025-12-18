@@ -144,6 +144,7 @@ void App::processInput(float deltaTime) {
     if (m_inputManager->wasActionTriggered(InputAction::ResetCamera)) {
         m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
         m_lockedBody = nullptr;
+        m_selectedBody = nullptr;
     }
     if (m_inputManager->wasActionTriggered(InputAction::Quit)) {
         m_isRunning = false;
@@ -153,6 +154,27 @@ void App::processInput(float deltaTime) {
         if (m_camera->getMode() == Render::CameraMode::FreeFly) {
             m_lockedBody = nullptr;  // Unlock when switching to free-fly
         }
+    }
+    
+    // Handle picking on click
+    if (!m_inputManager->uiWantsMouse() && m_inputManager->wasActionTriggered("left_click")) {
+        float mx, my;
+        m_inputManager->getMousePosition(mx, my);
+        const Simulation::CelestialBody* clicked = pickBody(mx, my);
+        
+        float currentTime = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        if (clicked && (currentTime - m_clickTime) < DOUBLE_CLICK_TIME && clicked == m_selectedBody) {
+            // Double click - Focus
+            m_lockedBody = clicked;
+            float bodyRadius = static_cast<float>(clicked->getRadius()) * m_solarSystem->getPlanetScale();
+            float orbitDist = std::max(bodyRadius * 5.0f, 2.0f);
+            glm::vec3 worldPos = clicked->getWorldPosition(m_time->getSimulationTime()) * m_solarSystem->getSystemScale();
+            m_camera->transitionToTarget(worldPos, orbitDist, 0.8f);
+        } else {
+            // Single click - Select
+            m_selectedBody = clicked;
+        }
+        m_clickTime = currentTime;
     }
     
     // Keyboard movement
@@ -214,6 +236,8 @@ void App::update(float deltaTime) {
     m_time->update(deltaTime);
     m_camera->update(deltaTime);
     
+    updateHover();
+    
     // Update orbit target if locked to a body
     if (m_lockedBody && m_camera->getMode() == Render::CameraMode::Orbit) {
         glm::vec3 worldPos = m_lockedBody->getWorldPosition(m_time->getSimulationTime());
@@ -227,12 +251,87 @@ void App::update(float deltaTime) {
 }
 
 void App::render() {
-    m_renderer->render(*m_solarSystem, *m_camera, m_time->getSimulationTime(), [this]() {
+    m_renderer->render(*m_solarSystem, *m_camera, m_time->getSimulationTime(), m_hoveredBody, [this]() {
         renderUI();
     });
 }
 
+void App::updateHover() {
+    if (m_inputManager->uiWantsMouse()) {
+        m_hoveredBody = nullptr;
+        return;
+    }
+    
+    float mx, my;
+    m_inputManager->getMousePosition(mx, my);
+    m_hoveredBody = pickBody(mx, my);
+}
+
+const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
+    int w, h;
+    m_window->getSize(w, h);
+    glm::vec3 rayDir = m_camera->getRayDirection(mouseX, mouseY, static_cast<float>(w), static_cast<float>(h));
+    glm::vec3 rayOrigin = m_camera->getPosition();
+    
+    const Simulation::CelestialBody* bestBody = nullptr;
+    float minDist = 1e10f;
+    
+    float sysScale = m_solarSystem->getSystemScale();
+    float planetScale = m_solarSystem->getPlanetScale();
+    double time = m_time->getSimulationTime();
+    
+    std::function<void(const Simulation::CelestialBody&, glm::vec3)> checkBody;
+    checkBody = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
+        glm::vec3 pos = parentPos + body.getPosition(time) * sysScale;
+        float radius = static_cast<float>(body.getRadius());
+        
+        if (body.getName() == "Sun") {
+            radius = 1.5f; // Visual sun size is hardcoded in renderer
+        } else {
+            radius *= planetScale;
+        }
+        
+        // Ray-sphere intersection
+        glm::vec3 L = pos - rayOrigin;
+        float tca = glm::dot(L, rayDir);
+        if (tca >= 0) {
+            float d2 = glm::dot(L, L) - tca * tca;
+            if (d2 <= radius * radius) {
+                float t0 = tca - sqrt(radius * radius - d2);
+                if (t0 < minDist) {
+                    minDist = t0;
+                    bestBody = &body;
+                }
+            }
+        }
+        
+        for (const auto& child : body.getChildren()) {
+            checkBody(*child, pos);
+        }
+    };
+    
+    for (const auto& body : m_solarSystem->getBodies()) {
+        checkBody(*body, glm::vec3(0.0f));
+    }
+    
+    return bestBody;
+}
+
 void App::renderUI() {
+    // Labels Toggle
+    if (ImGui::Begin("Visual Settings", nullptr)) {
+        bool showOrbits = m_renderer->isShowOrbits();
+        if (ImGui::Checkbox("Show Orbital Rings", &showOrbits)) {
+            m_renderer->setShowOrbits(showOrbits);
+        }
+        
+        bool showLabels = m_renderer->isShowLabels();
+        if (ImGui::Checkbox("Show Planet Labels", &showLabels)) {
+            m_renderer->setShowLabels(showLabels);
+        }
+    }
+    ImGui::End();
+
     // 1. Top bar / Stats Overlay
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.35f);
@@ -247,6 +346,80 @@ void App::renderUI() {
         }
     }
     ImGui::End();
+
+    // Planet Labels
+    if (m_renderer->isShowLabels()) {
+        int w, h;
+        m_window->getSize(w, h);
+        float sw = static_cast<float>(w);
+        float sh = static_cast<float>(h);
+        
+        glm::mat4 viewProj = m_camera->getProjectionMatrix() * m_camera->getViewMatrix();
+        float sysScale = m_solarSystem->getSystemScale();
+        double time = m_time->getSimulationTime();
+        
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        
+        std::function<void(const Simulation::CelestialBody&, glm::vec3)> drawLabel;
+        drawLabel = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
+            glm::vec3 worldPos = parentPos + body.getPosition(time) * sysScale;
+            glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
+            
+            if (clipPos.z > 0 && clipPos.w > 0) {
+                glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
+                float sx = (ndc.x + 1.0f) * 0.5f * sw;
+                float sy = (1.0f - ndc.y) * 0.5f * sh;
+                
+                ImU32 col = (m_hoveredBody == &body || m_selectedBody == &body) ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 150);
+                drawList->AddText(ImVec2(sx + 10, sy - 10), col, body.getName().c_str());
+            }
+            
+            for (const auto& child : body.getChildren()) {
+                drawLabel(*child, worldPos);
+            }
+        };
+        
+        for (const auto& body : m_solarSystem->getBodies()) {
+            drawLabel(*body, glm::vec3(0.0f));
+        }
+    }
+
+    // Info Pop-up (on hover or selection)
+    const Simulation::CelestialBody* infoBody = m_hoveredBody ? m_hoveredBody : m_selectedBody;
+    if (infoBody) {
+        ImGui::SetNextWindowBgAlpha(0.85f);
+        if (m_hoveredBody) {
+            float mx, my;
+            m_inputManager->getMousePosition(mx, my);
+            ImGui::SetNextWindowPos(ImVec2(mx + 20, my + 20), ImGuiCond_Always);
+        } else {
+            ImGui::SetNextWindowPos(ImVec2(10, 100), ImGuiCond_FirstUseEver);
+        }
+        
+        ImGui::Begin("Body Info", nullptr, ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar);
+        ImGui::TextColored(ImVec4(0.4, 0.8, 1.0, 1.0), "%s", infoBody->getName().c_str());
+        ImGui::Separator();
+        
+        if (infoBody->getName() == "Sun" || infoBody->getName() == "Kepler-90" || infoBody->getName() == "TRAPPIST-1") {
+            ImGui::Text("Type: Star");
+            ImGui::Text("Radius: %.1f km (Relative)", infoBody->getRadius());
+        } else {
+            ImGui::Text("Type: Planet/Moon");
+            const auto& op = infoBody->getOrbitalParams();
+            ImGui::Text("Distance: %.3f AU", op.semiMajorAxis);
+            ImGui::Text("Period: %.3f Years", op.orbitalPeriod);
+            ImGui::Text("Eccentricity: %.3f", op.eccentricity);
+        }
+        
+        if (m_hoveredBody && m_hoveredBody != m_selectedBody) {
+            ImGui::TextColored(ImVec4(0.7, 0.7, 0.7, 1.0), "(Click for more info)");
+        }
+        if (infoBody == m_selectedBody) {
+             ImGui::TextColored(ImVec4(0.7, 0.7, 1.0, 1.0), "(Double-click to focus)");
+        }
+        
+        ImGui::End();
+    }
 
     // 2. Main Control Panel
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, 10), ImGuiCond_Always);

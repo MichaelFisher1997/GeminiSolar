@@ -48,6 +48,9 @@ public:
     void setPosition(const glm::vec3& position);
     void lookAt(const glm::vec3& target);
     
+    // Raycasting
+    glm::vec3 getRayDirection(float screenX, float screenY, float screenWidth, float screenHeight) const;
+
     // Settings
     void setMouseSensitivity(float sensitivity) { m_mouseSensitivity = sensitivity; }
     void setMoveSpeed(float speed) { m_moveSpeed = speed; }

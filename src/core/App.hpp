@@ -31,6 +31,10 @@ private:
     void render();
     void renderUI();
     void shutdown();
+    
+    // Interaction
+    void updateHover();
+    const Simulation::CelestialBody* pickBody(float mouseX, float mouseY);
 
     // Core systems
     std::unique_ptr<Platform::SDLWindow> m_window;
@@ -46,6 +50,12 @@ private:
     
     // State
     const Simulation::CelestialBody* m_lockedBody = nullptr;
+    const Simulation::CelestialBody* m_hoveredBody = nullptr;
+    const Simulation::CelestialBody* m_selectedBody = nullptr;
+    
+    float m_clickTime = 0.0f;
+    const float DOUBLE_CLICK_TIME = 0.3f;
+    
     bool m_isRunning = false;
 };
 

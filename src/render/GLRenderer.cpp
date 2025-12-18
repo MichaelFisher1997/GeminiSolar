@@ -31,7 +31,7 @@ GLRenderer::~GLRenderer() {
 
 void GLRenderer::initGL() {
     glEnable(GL_DEPTH_TEST);
-    glClearColor(0.0f, 0.0f, 0.05f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Pitch black
     LOG_INFO("GLRenderer", "OpenGL state initialized");
 }
 
@@ -44,9 +44,6 @@ void GLRenderer::loadShaders() {
         m_shaderManager->loadFromFiles(SHADER_ORBIT, 
                                         "assets/shaders/orbit.vert",
                                         "assets/shaders/orbit.frag");
-        m_shaderManager->loadFromFiles(SHADER_STARFIELD, 
-                                        "assets/shaders/starfield.vert",
-                                        "assets/shaders/starfield.frag");
     } catch (const std::exception& e) {
         LOG_WARN("GLRenderer", "Failed to load some shader files, some features may be missing: ", e.what());
     }
@@ -55,24 +52,21 @@ void GLRenderer::loadShaders() {
 void GLRenderer::createMeshes() {
     m_sphereMesh = MeshFactory::createSphere(48, 48);
     m_orbitMesh = MeshFactory::createCircle(256);
-    m_starfieldMesh = MeshFactory::createSphere(16, 16); // Lower detail for starfield
     LOG_INFO("GLRenderer", "Meshes created");
 }
 
 void GLRenderer::render(const Simulation::SolarSystem& solarSystem, 
                         const Camera& camera, 
                         double simulationTime, 
+                        const Simulation::CelestialBody* hoveredBody,
                         std::function<void()> uiCallback) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
-    // 1. Render Starfield
-    renderStarfield(camera);
-    
-    // 2. Begin UI frame (to collect layout before drawing objects)
+    // 1. Begin UI frame
     m_uiManager->beginFrame();
     if (uiCallback) uiCallback();
     
-    // 3. Render Solar System
+    // 2. Render Solar System
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
@@ -87,6 +81,7 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
     GLint isSunLoc = m_shaderManager->getUniformLocation(planetShader, "isSun");
     GLint timeLoc = m_shaderManager->getUniformLocation(planetShader, "time");
     GLint viewPosLoc = m_shaderManager->getUniformLocation(planetShader, "viewPos");
+    GLint highlightLoc = m_shaderManager->getUniformLocation(planetShader, "highlight");
     
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = camera.getProjectionMatrix();
@@ -143,6 +138,10 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
         {
             float scale = static_cast<float>(body.getRadius()) * visualRadiusScale;
             glm::mat4 model = glm::scale(posMatrix, glm::vec3(scale));
+            
+            float highlight = (hoveredBody == &body) ? 1.0f : 0.0f;
+            glUniform1f(highlightLoc, highlight);
+            
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
             glUniform1i(isSunLoc, isSun ? 1 : 0);
             glUniform3fv(colorLoc, 1, glm::value_ptr(body.getColor()));
@@ -174,23 +173,6 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
     glDisable(GL_BLEND);
     m_uiManager->endFrame();
     m_window.swapBuffers();
-}
-
-void GLRenderer::renderStarfield(const Camera& camera) {
-    glDepthMask(GL_FALSE);
-    GLuint shader = m_shaderManager->getShader(SHADER_STARFIELD);
-    m_shaderManager->useShader(shader);
-    
-    glm::mat4 view = camera.getViewMatrix();
-    glm::mat4 proj = camera.getProjectionMatrix();
-    glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(100.0f)); // Scale doesn't matter much for infinite background
-    
-    glUniformMatrix4fv(m_shaderManager->getUniformLocation(shader, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(m_shaderManager->getUniformLocation(shader, "view"), 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(m_shaderManager->getUniformLocation(shader, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
-    
-    m_starfieldMesh->draw();
-    glDepthMask(GL_TRUE);
 }
 
 void GLRenderer::resize(int width, int height) {

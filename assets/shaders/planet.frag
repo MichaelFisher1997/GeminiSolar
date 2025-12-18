@@ -8,12 +8,15 @@ in vec3 ViewDir;
 uniform vec3 objectColor;
 uniform int isSun;
 uniform float time;
+uniform float highlight; // 0.0 to 1.0
 
 void main() {
     if (isSun == 1) {
         // Sun glow effect
         float pulse = 0.95 + 0.05 * sin(time * 2.0);
-        FragColor = vec4(objectColor * pulse, 1.0);
+        vec3 color = objectColor * pulse;
+        if (highlight > 0.0) color += vec3(0.3) * highlight;
+        FragColor = vec4(color, 1.0);
         return;
     }
 
@@ -36,9 +39,14 @@ void main() {
     // Fresnel / Atmosphere rim light
     float fresnel = pow(1.0 - max(dot(norm, ViewDir), 0.0), 3.0);
     vec3 rimColor = mix(objectColor, vec3(0.6, 0.8, 1.0), 0.5); // Atmospheric blue tint
-    vec3 rim = fresnel * rimColor * 0.4;
+    vec3 rim = fresnel * rimColor * (0.4 + 0.6 * highlight);
 
     vec3 result = (ambient + diffuse) * objectColor + specular + rim;
+    
+    // Add highlight glow
+    if (highlight > 0.0) {
+        result = mix(result, result + vec3(0.2, 0.4, 0.8) * highlight, highlight);
+    }
     
     // Simple gamma correction
     result = pow(result, vec3(1.0/1.8));

@@ -72,6 +72,9 @@ void InputManager::processEvent(const Platform::WindowEvent& event) {
         
         case Platform::WindowEventType::MouseButtonDown: {
             m_mouseButtonsDown.insert(event.mouseButton);
+            if (event.mouseButton == 1) { // Left click
+                m_triggeredActions.insert("left_click");
+            }
             break;
         }
         
