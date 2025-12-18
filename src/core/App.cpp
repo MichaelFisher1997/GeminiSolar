@@ -249,8 +249,8 @@ void App::renderUI() {
     ImGui::End();
 
     // 2. Main Control Panel
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, 10), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Always);
     if (ImGui::Begin("Simulation Controls", nullptr)) {
         if (ImGui::CollapsingHeader("System Selection", ImGuiTreeNodeFlags_DefaultOpen)) {
             const char* systems[] = { "Solar System", "TRAPPIST-1", "Kepler-90", "HR 8799", "Kepler-11", "55 Cancri" };
@@ -302,8 +302,8 @@ void App::renderUI() {
     ImGui::End();
 
     // 3. Navigation / Focus Panel
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, 450), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300, 250), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, ImGui::GetIO().DisplaySize.y - 260), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(300, 250), ImGuiCond_Always);
     if (ImGui::Begin("Celestial Bodies", nullptr)) {
         if (ImGui::Button("Clear Focus", ImVec2(-1, 0))) {
             m_lockedBody = nullptr;
