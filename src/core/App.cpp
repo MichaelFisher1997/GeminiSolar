@@ -270,7 +270,10 @@ void App::updateHover() {
 const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
     int w, h;
     m_window->getSize(w, h);
-    glm::vec3 rayDir = m_camera->getRayDirection(mouseX, mouseY, static_cast<float>(w), static_cast<float>(h));
+    float sw = static_cast<float>(w);
+    float sh = static_cast<float>(h);
+    
+    glm::vec3 rayDir = m_camera->getRayDirection(mouseX, mouseY, sw, sh);
     glm::vec3 rayOrigin = m_camera->getPosition();
     
     const Simulation::CelestialBody* bestBody = nullptr;
@@ -280,24 +283,27 @@ const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
     float planetScale = m_solarSystem->getPlanetScale();
     double time = m_time->getSimulationTime();
     
+    glm::mat4 viewProj = m_camera->getProjectionMatrix() * m_camera->getViewMatrix();
+    
     std::function<void(const Simulation::CelestialBody&, glm::vec3)> checkBody;
     checkBody = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
-        glm::vec3 pos = parentPos + body.getPosition(time) * sysScale;
+        glm::vec3 worldPos = parentPos + body.getPosition(time) * sysScale;
         float radius = static_cast<float>(body.getRadius());
         
-        if (body.getName() == "Sun") {
-            radius = 1.5f; // Visual sun size is hardcoded in renderer
+        if (body.getName() == "Sun" || body.getName() == "Kepler-90" || body.getName() == "TRAPPIST-1") {
+            radius = 1.5f; // Visual sun size
         } else {
             radius *= planetScale;
         }
         
-        // Ray-sphere intersection
-        glm::vec3 L = pos - rayOrigin;
+        // 1. Ray-sphere intersection (with a small fudge factor for better feel)
+        float clickRadius = std::max(radius, 0.1f); // Min selectable size
+        glm::vec3 L = worldPos - rayOrigin;
         float tca = glm::dot(L, rayDir);
         if (tca >= 0) {
             float d2 = glm::dot(L, L) - tca * tca;
-            if (d2 <= radius * radius) {
-                float t0 = tca - sqrt(radius * radius - d2);
+            if (d2 <= clickRadius * clickRadius) {
+                float t0 = tca - sqrt(clickRadius * clickRadius - d2);
                 if (t0 < minDist) {
                     minDist = t0;
                     bestBody = &body;
@@ -305,8 +311,30 @@ const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
             }
         }
         
+        // 2. Label proximity picking
+        if (m_renderer->isShowLabels()) {
+            glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
+            if (clipPos.z > 0 && clipPos.w > 0) {
+                glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
+                float sx = (ndc.x + 1.0f) * 0.5f * sw;
+                float sy = (1.0f - ndc.y) * 0.5f * sh;
+                
+                float dx = mouseX - sx;
+                float dy = mouseY - sy;
+                float distSq = dx*dx + dy*dy;
+                
+                if (distSq < 400.0f) { // 20 pixel radius around label
+                    // Prefer label picking for very small distant objects
+                    if (minDist > 100.0f) { 
+                        minDist = 0.0f; // Force selection
+                        bestBody = &body;
+                    }
+                }
+            }
+        }
+        
         for (const auto& child : body.getChildren()) {
-            checkBody(*child, pos);
+            checkBody(*child, worldPos);
         }
     };
     
@@ -365,7 +393,10 @@ void App::renderUI() {
             glm::vec3 worldPos = parentPos + body.getPosition(time) * sysScale;
             glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
             
-            if (clipPos.z > 0 && clipPos.w > 0) {
+            bool isMoon = body.getParent() != nullptr;
+            bool shouldShowMoonLabel = isMoon && (body.getParent() == m_lockedBody || &body == m_lockedBody);
+            
+            if (clipPos.z > 0 && clipPos.w > 0 && (!isMoon || shouldShowMoonLabel)) {
                 glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
                 float sx = (ndc.x + 1.0f) * 0.5f * sw;
                 float sy = (1.0f - ndc.y) * 0.5f * sh;
@@ -493,6 +524,36 @@ void App::renderUI() {
             bool showOrbits = m_renderer->isShowOrbits();
             if (ImGui::Checkbox("Show Orbital Rings", &showOrbits)) {
                 m_renderer->setShowOrbits(showOrbits);
+            }
+            
+            bool showLabels = m_renderer->isShowLabels();
+            if (ImGui::Checkbox("Show Planet Labels", &showLabels)) {
+                m_renderer->setShowLabels(showLabels);
+            }
+        }
+
+        // 4. Historic Presets (Solar System Only)
+        if (m_solarSystem->getCurrentSystemName() == "Solar System") {
+            if (ImGui::CollapsingHeader("Historic Events", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.3f, 0.4f, 1.0f));
+                
+                auto eventBtn = [this](const char* label, double time) {
+                    if (ImGui::Button(label, ImVec2(-1, 0))) {
+                        m_time->setSimulationTime(time);
+                        m_time->setPaused(true);
+                        // Reset camera focus when jumping to broad events
+                        m_lockedBody = nullptr;
+                    }
+                };
+
+                eventBtn("Great Conjunction (2020)", 20.972);
+                eventBtn("Total Solar Eclipse (2017)", 17.638);
+                eventBtn("Venus Transit (2012)", 12.427);
+                eventBtn("Shoemaker-Levy 9 Impact (1994)", -5.460);
+                eventBtn("Voyager 2 Neptune Flyby (1989)", -10.353);
+
+                ImGui::PopStyleColor();
+                ImGui::TextWrapped("Clicking an event pauses the simulation at that date.");
             }
         }
     }

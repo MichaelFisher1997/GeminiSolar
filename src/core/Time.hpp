@@ -14,6 +14,7 @@ public:
     void setTimeScale(double scale) { m_timeScale = scale; }
     double getTimeScale() const { return m_timeScale; }
 
+    void setSimulationTime(double time) { m_simulationTime = time; }
     double getSimulationTime() const { return m_simulationTime; }
 
 private:

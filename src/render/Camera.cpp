@@ -11,8 +11,8 @@ Camera::Camera(float width, float height)
     , m_yaw(-90.0f)
     , m_pitch(-25.0f)
     , m_fov(45.0f)
-    , m_nearPlane(0.1f)
-    , m_farPlane(2000.0f)
+    , m_nearPlane(1.0f)
+    , m_farPlane(1000000.0f)
     , m_targetYaw(-90.0f)
     , m_targetPitch(-25.0f) {
     

@@ -1,13 +1,13 @@
 {
   "name": "55 Cancri",
   "scale": {
-    "system": 20.0,
-    "planet": 0.3
+    "system": 1000.0,
+    "planet": 0.1
   },
   "bodies": [
     {
-      "name": "55 Cancri",
-      "radius": 100.0,
+      "name": "Copernicus",
+      "radius": 102.6,
       "color": [1.0, 0.8, 0.4],
       "orbit": {
         "semiMajorAxis": 0.0,
@@ -20,13 +20,13 @@
       }
     },
     {
-      "name": "e",
-      "radius": 2.0,
+      "name": "e (Janssen)",
+      "radius": 1.88,
       "color": [0.9, 0.5, 0.5],
       "orbit": {
         "semiMajorAxis": 0.015,
-        "eccentricity": 0.0,
-        "inclination": 0.0,
+        "eccentricity": 0.05,
+        "inclination": 83.4,
         "period": 0.002,
         "meanAnomaly": 0.0,
         "longitudeAscendingNode": 0.0,
@@ -34,57 +34,57 @@
       }
     },
     {
-      "name": "b",
-      "radius": 9.0,
+      "name": "b (Galileo)",
+      "radius": 8.0,
       "color": [0.8, 0.6, 0.4],
       "orbit": {
-        "semiMajorAxis": 0.11,
+        "semiMajorAxis": 0.115,
         "eccentricity": 0.0,
-        "inclination": 0.0,
-        "period": 0.04,
-        "meanAnomaly": 1.0,
+        "inclination": 85.0,
+        "period": 0.0401,
+        "meanAnomaly": 72.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
-      "name": "c",
-      "radius": 9.0,
+      "name": "c (Brahe)",
+      "radius": 8.0,
       "color": [0.7, 0.6, 0.4],
       "orbit": {
         "semiMajorAxis": 0.24,
-        "eccentricity": 0.0,
-        "inclination": 0.0,
-        "period": 0.12,
-        "meanAnomaly": 2.0,
+        "eccentricity": 0.05,
+        "inclination": 85.0,
+        "period": 0.1215,
+        "meanAnomaly": 144.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
-      "name": "f",
-      "radius": 9.0,
+      "name": "f (Harriot)",
+      "radius": 8.0,
       "color": [0.6, 0.5, 0.4],
       "orbit": {
         "semiMajorAxis": 0.78,
-        "eccentricity": 0.0,
-        "inclination": 0.0,
-        "period": 0.71,
-        "meanAnomaly": 3.0,
+        "eccentricity": 0.1,
+        "inclination": 85.0,
+        "period": 0.712,
+        "meanAnomaly": 216.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
-      "name": "d",
+      "name": "d (Lipperhey)",
       "radius": 10.0,
       "color": [0.5, 0.5, 0.8],
       "orbit": {
-        "semiMajorAxis": 5.7,
-        "eccentricity": 0.0,
-        "inclination": 0.0,
-        "period": 14.0,
-        "meanAnomaly": 4.0,
+        "semiMajorAxis": 5.74,
+        "eccentricity": 0.02,
+        "inclination": 85.0,
+        "period": 14.3,
+        "meanAnomaly": 288.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }

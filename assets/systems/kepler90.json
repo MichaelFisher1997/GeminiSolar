@@ -1,13 +1,13 @@
 {
   "name": "Kepler-90",
   "scale": {
-    "system": 20.0,
-    "planet": 0.4
+    "system": 800.0,
+    "planet": 0.1
   },
   "bodies": [
     {
       "name": "Kepler-90",
-      "radius": 130.0,
+      "radius": 131.0,
       "color": [1.0, 0.9, 0.6],
       "orbit": {
         "semiMajorAxis": 0.0,
@@ -21,13 +21,13 @@
     },
     {
       "name": "b",
-      "radius": 1.3,
+      "radius": 1.31,
       "color": [0.6, 0.6, 0.6],
       "orbit": {
         "semiMajorAxis": 0.074,
         "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.019,
+        "inclination": 89.4,
+        "period": 0.0192,
         "meanAnomaly": 0.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
@@ -35,84 +35,84 @@
     },
     {
       "name": "c",
-      "radius": 1.2,
-      "color": [0.6, 0.6, 0.6],
+      "radius": 1.18,
+      "color": [0.7, 0.7, 0.7],
       "orbit": {
         "semiMajorAxis": 0.089,
         "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.024,
-        "meanAnomaly": 1.0,
+        "inclination": 89.68,
+        "period": 0.0239,
+        "meanAnomaly": 45.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
       "name": "i",
-      "radius": 1.3,
-      "color": [0.6, 0.6, 0.6],
+      "radius": 1.32,
+      "color": [0.8, 0.6, 0.6],
       "orbit": {
-        "semiMajorAxis": 0.12,
+        "semiMajorAxis": 0.123,
         "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.039,
-        "meanAnomaly": 2.0,
+        "inclination": 89.2,
+        "period": 0.0396,
+        "meanAnomaly": 90.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
       "name": "d",
-      "radius": 2.9,
-      "color": [0.7, 0.7, 0.7],
+      "radius": 2.88,
+      "color": [0.7, 0.7, 0.9],
       "orbit": {
         "semiMajorAxis": 0.32,
         "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.16,
-        "meanAnomaly": 3.0,
+        "inclination": 89.71,
+        "period": 0.1635,
+        "meanAnomaly": 135.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
       "name": "e",
-      "radius": 2.7,
-      "color": [0.7, 0.7, 0.7],
+      "radius": 2.67,
+      "color": [0.9, 0.8, 0.7],
       "orbit": {
         "semiMajorAxis": 0.42,
         "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.25,
-        "meanAnomaly": 4.0,
+        "inclination": 89.73,
+        "period": 0.2517,
+        "meanAnomaly": 180.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
       "name": "f",
-      "radius": 2.9,
-      "color": [0.7, 0.7, 0.7],
+      "radius": 2.89,
+      "color": [0.8, 0.8, 0.8],
       "orbit": {
         "semiMajorAxis": 0.48,
-        "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.34,
-        "meanAnomaly": 5.0,
+        "eccentricity": 0.01,
+        "inclination": 89.77,
+        "period": 0.342,
+        "meanAnomaly": 225.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
     },
     {
       "name": "g",
-      "radius": 8.1,
+      "radius": 8.13,
       "color": [0.8, 0.7, 0.5],
       "orbit": {
         "semiMajorAxis": 0.71,
         "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.57,
-        "meanAnomaly": 6.0,
+        "inclination": 89.8,
+        "period": 0.5766,
+        "meanAnomaly": 270.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
@@ -124,9 +124,9 @@
       "orbit": {
         "semiMajorAxis": 1.01,
         "eccentricity": 0.0,
-        "inclination": 89.0,
-        "period": 0.91,
-        "meanAnomaly": 7.0,
+        "inclination": 89.6,
+        "period": 0.9079,
+        "meanAnomaly": 315.0,
         "longitudeAscendingNode": 0.0,
         "argumentPeriapsis": 0.0
       }
