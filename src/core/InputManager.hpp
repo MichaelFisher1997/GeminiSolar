@@ -22,6 +22,7 @@ namespace InputAction {
     constexpr const char* RotateUp = "rotate_up";
     constexpr const char* RotateDown = "rotate_down";
     constexpr const char* TogglePause = "toggle_pause";
+    constexpr const char* ToggleCameraMode = "toggle_camera_mode";
     constexpr const char* ResetCamera = "reset_camera";
     constexpr const char* Quit = "quit";
 }

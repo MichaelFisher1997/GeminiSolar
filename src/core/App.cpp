@@ -131,65 +131,66 @@ void App::run() {
 }
 
 void App::processInput(float deltaTime) {
-    const float moveSpeed = 10.0f * deltaTime;
-    const float rotateSpeed = 90.0f * deltaTime;
-    
-    // Movement
-    if (m_inputManager->isActionActive(InputAction::MoveForward)) {
-        m_camera->moveForward(moveSpeed);
-    }
-    if (m_inputManager->isActionActive(InputAction::MoveBackward)) {
-        m_camera->moveForward(-moveSpeed);
-    }
-    if (m_inputManager->isActionActive(InputAction::MoveLeft)) {
-        m_camera->moveRight(-moveSpeed);
-    }
-    if (m_inputManager->isActionActive(InputAction::MoveRight)) {
-        m_camera->moveRight(moveSpeed);
-    }
-    if (m_inputManager->isActionActive(InputAction::MoveUp)) {
-        m_camera->moveUp(moveSpeed);
-    }
-    if (m_inputManager->isActionActive(InputAction::MoveDown)) {
-        m_camera->moveUp(-moveSpeed);
-    }
-    
-    // Rotation (keyboard)
-    if (m_inputManager->isActionActive(InputAction::RotateLeft)) {
-        m_camera->rotate(-rotateSpeed, 0.0f);
-    }
-    if (m_inputManager->isActionActive(InputAction::RotateRight)) {
-        m_camera->rotate(rotateSpeed, 0.0f);
-    }
-    if (m_inputManager->isActionActive(InputAction::RotateUp)) {
-        m_camera->rotate(0.0f, rotateSpeed);
-    }
-    if (m_inputManager->isActionActive(InputAction::RotateDown)) {
-        m_camera->rotate(0.0f, -rotateSpeed);
-    }
-    
-    // Toggle actions
+    // Handle toggle actions first
     if (m_inputManager->wasActionTriggered(InputAction::TogglePause)) {
         m_time->setPaused(!m_time->isPaused());
     }
     if (m_inputManager->wasActionTriggered(InputAction::ResetCamera)) {
-        m_camera->setOrbitTarget(glm::vec3(0.0f), 20.0f);
+        m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
+        m_lockedBody = nullptr;
     }
     if (m_inputManager->wasActionTriggered(InputAction::Quit)) {
         m_isRunning = false;
     }
+    if (m_inputManager->wasActionTriggered(InputAction::ToggleCameraMode)) {
+        m_camera->toggleMode();
+        if (m_camera->getMode() == Render::CameraMode::FreeFly) {
+            m_lockedBody = nullptr;  // Unlock when switching to free-fly
+        }
+    }
     
-    // Mouse look (right button)
-    if (m_inputManager->isMouseButtonDown(3)) {  // SDL_BUTTON_RIGHT = 3
+    // Keyboard movement
+    float forward = 0.0f, right = 0.0f, up = 0.0f;
+    
+    if (m_inputManager->isActionActive(InputAction::MoveForward)) forward += 1.0f;
+    if (m_inputManager->isActionActive(InputAction::MoveBackward)) forward -= 1.0f;
+    if (m_inputManager->isActionActive(InputAction::MoveRight)) right += 1.0f;
+    if (m_inputManager->isActionActive(InputAction::MoveLeft)) right -= 1.0f;
+    if (m_inputManager->isActionActive(InputAction::MoveUp)) up += 1.0f;
+    if (m_inputManager->isActionActive(InputAction::MoveDown)) up -= 1.0f;
+    
+    if (forward != 0.0f || right != 0.0f || up != 0.0f) {
+        m_camera->handleKeyMovement(forward, right, up, deltaTime);
+    }
+    
+    // Keyboard rotation (arrow keys) - for orbit mode
+    float rotYaw = 0.0f, rotPitch = 0.0f;
+    const float keyRotateSpeed = 120.0f;  // Degrees per second
+    
+    if (m_inputManager->isActionActive(InputAction::RotateLeft)) rotYaw -= keyRotateSpeed * deltaTime;
+    if (m_inputManager->isActionActive(InputAction::RotateRight)) rotYaw += keyRotateSpeed * deltaTime;
+    if (m_inputManager->isActionActive(InputAction::RotateUp)) rotPitch += keyRotateSpeed * deltaTime;
+    if (m_inputManager->isActionActive(InputAction::RotateDown)) rotPitch -= keyRotateSpeed * deltaTime;
+    
+    if (rotYaw != 0.0f || rotPitch != 0.0f) {
+        // Directly modify target angles for keyboard input (already scaled by deltaTime)
+        m_camera->handleMouseDrag(rotYaw / m_camera->getMouseSensitivity(), 
+                                  rotPitch / m_camera->getMouseSensitivity());
+    }
+    
+    // Mouse drag rotation (right mouse button or middle button)
+    if (m_inputManager->isMouseButtonDown(3) || m_inputManager->isMouseButtonDown(2)) {
         float dx, dy;
         m_inputManager->getMouseDelta(dx, dy);
-        m_camera->rotate(dx * 0.2f, dy * 0.2f);
+        if (dx != 0.0f || dy != 0.0f) {
+            m_camera->handleMouseDrag(dx, dy);
+        }
     }
     
     // Mouse wheel zoom
     float scroll = m_inputManager->getScrollDelta();
     if (scroll != 0.0f) {
-        m_camera->zoom(scroll * 2.0f);
+        m_camera->handleScroll(scroll);
     }
 }
 
@@ -198,10 +199,14 @@ void App::update(float deltaTime) {
     m_camera->update(deltaTime);
     
     // Update orbit target if locked to a body
-    if (m_lockedBody) {
+    if (m_lockedBody && m_camera->getMode() == Render::CameraMode::Orbit) {
         glm::vec3 worldPos = m_lockedBody->getWorldPosition(m_time->getSimulationTime());
         worldPos *= m_solarSystem->getSystemScale();
-        m_camera->updateOrbitTarget(worldPos);
+        
+        // Update target smoothly
+        glm::vec3 currentTarget = m_camera->getOrbitTarget();
+        glm::vec3 newTarget = glm::mix(currentTarget, worldPos, 1.0f - std::exp(-10.0f * deltaTime));
+        m_camera->setOrbitTarget(newTarget);
     }
 }
 
@@ -220,60 +225,122 @@ void App::renderUI() {
     if (ImGui::Combo("System", &currentSystemIdx, systems, IM_ARRAYSIZE(systems))) {
         m_solarSystem->loadSystem(systems[currentSystemIdx]);
         m_lockedBody = nullptr;
-        m_camera->setOrbitTarget(glm::vec3(0.0f), 20.0f);
+        m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
     }
     
-    // Time scale
+    // Time controls
+    ImGui::Separator();
+    ImGui::Text("Time");
+    
     float timeScale = static_cast<float>(m_time->getTimeScale());
-    if (ImGui::SliderFloat("Time Scale", &timeScale, 0.0f, 1.0f, "%.4f")) {
+    if (ImGui::SliderFloat("Speed", &timeScale, 0.0f, 1.0f, "%.4f")) {
         m_time->setTimeScale(timeScale);
     }
     
-    // Pause button
-    if (ImGui::Button(m_time->isPaused() ? "Resume" : "Pause")) {
+    if (ImGui::Button(m_time->isPaused() ? "Resume (P)" : "Pause (P)")) {
         m_time->setPaused(!m_time->isPaused());
     }
     
+    // Camera controls
+    ImGui::Separator();
+    ImGui::Text("Camera");
+    
+    const char* modeNames[] = { "Orbit", "Free Fly" };
+    int currentMode = static_cast<int>(m_camera->getMode());
+    if (ImGui::Combo("Mode (Tab)", &currentMode, modeNames, 2)) {
+        m_camera->setMode(static_cast<Render::CameraMode>(currentMode));
+        if (m_camera->getMode() == Render::CameraMode::FreeFly) {
+            m_lockedBody = nullptr;
+        }
+    }
+    
+    float sensitivity = m_camera->getMouseSensitivity();
+    if (ImGui::SliderFloat("Sensitivity", &sensitivity, 0.05f, 1.0f)) {
+        m_camera->setMouseSensitivity(sensitivity);
+    }
+    
+    bool invertY = m_camera->isInvertY();
+    if (ImGui::Checkbox("Invert Y", &invertY)) {
+        m_camera->setInvertY(invertY);
+    }
+    
+    if (ImGui::Button("Reset Camera (O)")) {
+        m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
+        m_lockedBody = nullptr;
+    }
+    
     // Focus target selector
-    if (ImGui::BeginCombo("Focus", m_lockedBody ? m_lockedBody->getName().c_str() : "Select Body")) {
-        // Sun option
-        if (ImGui::Selectable("Sun", m_lockedBody == m_solarSystem->getSun())) {
-            m_camera->setOrbitTarget(glm::vec3(0.0f), 20.0f);
-            m_lockedBody = m_solarSystem->getSun();
+    ImGui::Separator();
+    ImGui::Text("Focus Target");
+    
+    std::string currentFocus = m_lockedBody ? m_lockedBody->getName() : "None";
+    if (ImGui::BeginCombo("##Focus", currentFocus.c_str())) {
+        // None option
+        if (ImGui::Selectable("None", m_lockedBody == nullptr)) {
+            m_lockedBody = nullptr;
+        }
+        
+        // Sun/Star option
+        const auto* sun = m_solarSystem->getSun();
+        if (sun && ImGui::Selectable(sun->getName().c_str(), m_lockedBody == sun)) {
+            m_lockedBody = sun;
+            m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
         }
         
         float systemScale = m_solarSystem->getSystemScale();
+        float planetScale = m_solarSystem->getPlanetScale();
         
         // Other bodies
         auto& bodies = m_solarSystem->getBodies();
-        for (const auto& body : bodies) {
-            if (body->getName() == "Sun") continue;
+        for (size_t i = 1; i < bodies.size(); ++i) {  // Skip sun at index 0
+            const auto& body = bodies[i];
             
-            // Root bodies (planets)
+            // Calculate appropriate orbit distance based on body size
+            float bodyRadius = static_cast<float>(body->getRadius()) * planetScale;
+            float orbitDist = std::max(bodyRadius * 4.0f, 3.0f);
+            
             bool isSelected = (m_lockedBody == body.get());
             if (ImGui::Selectable(body->getName().c_str(), isSelected)) {
-                glm::vec3 worldPos = body->getWorldPosition(m_time->getSimulationTime()) * systemScale;
-                m_camera->setOrbitTarget(worldPos, 5.0f);
                 m_lockedBody = body.get();
+                glm::vec3 worldPos = body->getWorldPosition(m_time->getSimulationTime()) * systemScale;
+                m_camera->transitionToTarget(worldPos, orbitDist, 0.5f);
             }
             
-            // Children (moons)
+            // Children (moons) - indented
             for (const auto& child : body->getChildren()) {
                 std::string label = "  " + child->getName();
+                float childRadius = static_cast<float>(child->getRadius()) * planetScale;
+                float childOrbitDist = std::max(childRadius * 5.0f, 1.5f);
+                
                 isSelected = (m_lockedBody == child.get());
                 if (ImGui::Selectable(label.c_str(), isSelected)) {
-                    glm::vec3 worldPos = child->getWorldPosition(m_time->getSimulationTime()) * systemScale;
-                    m_camera->setOrbitTarget(worldPos, 2.0f);
                     m_lockedBody = child.get();
+                    glm::vec3 worldPos = child->getWorldPosition(m_time->getSimulationTime()) * systemScale;
+                    m_camera->transitionToTarget(worldPos, childOrbitDist, 0.5f);
                 }
             }
         }
         ImGui::EndCombo();
     }
     
+    // Info
     ImGui::Separator();
-    ImGui::Text("Simulation Time: %.2f years", m_time->getSimulationTime());
-    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+    ImGui::Text("Simulation: %.2f years", m_time->getSimulationTime());
+    ImGui::Text("FPS: %.0f", ImGui::GetIO().Framerate);
+    
+    // Help
+    if (ImGui::CollapsingHeader("Controls Help")) {
+        ImGui::BulletText("Right-click + drag: Rotate camera");
+        ImGui::BulletText("Scroll wheel: Zoom in/out");
+        ImGui::BulletText("Arrow keys: Rotate camera");
+        ImGui::BulletText("W/S: Zoom in/out (orbit) or move (free)");
+        ImGui::BulletText("A/D: Strafe (free fly only)");
+        ImGui::BulletText("Q/E: Move down/up (free fly only)");
+        ImGui::BulletText("Tab: Toggle camera mode");
+        ImGui::BulletText("P: Pause/Resume");
+        ImGui::BulletText("O: Reset camera");
+        ImGui::BulletText("Esc: Quit");
+    }
     
     ImGui::End();
 }

@@ -25,6 +25,7 @@ void InputManager::setupDefaultBindings() {
     
     // Actions
     bindKey(SDL_SCANCODE_P, InputAction::TogglePause);
+    bindKey(SDL_SCANCODE_TAB, InputAction::ToggleCameraMode);
     bindKey(SDL_SCANCODE_O, InputAction::ResetCamera);
     bindKey(SDL_SCANCODE_ESCAPE, InputAction::Quit);
 }
