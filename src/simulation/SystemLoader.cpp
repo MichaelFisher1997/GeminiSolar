@@ -33,6 +33,13 @@ std::unique_ptr<CelestialBody> parseBody(const json& bodyJson) {
     
     auto body = std::make_unique<CelestialBody>(name, radius, color, orbit);
     
+    // Parse mass if provided, else estimate from radius
+    if (bodyJson.contains("mass")) {
+        body->setMass(bodyJson.at("mass").get<double>());
+    } else {
+        body->setMass(radius * radius * radius);
+    }
+    
     // Parse children (moons)
     if (bodyJson.contains("children")) {
         for (const auto& childJson : bodyJson.at("children")) {
@@ -99,9 +106,11 @@ std::vector<std::string> SystemLoader::getAvailableSystems() {
         "Solar System",
         "TRAPPIST-1",
         "Kepler-90",
-        "HR 8799",
         "Kepler-11",
-        "55 Cancri"
+        "55 Cancri",
+        "HR 8799",
+        "Black Hole",
+        "Binary Star"
     };
 }
 

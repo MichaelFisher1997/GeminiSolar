@@ -233,14 +233,29 @@ void App::processInput(float deltaTime) {
 }
 
 void App::update(float deltaTime) {
-    m_time->update(deltaTime);
+    if (m_solarSystem->isPhysicsEnabled()) {
+        // Run physics multiple steps per frame for stability
+        const int steps = 4;
+        float subDt = deltaTime / steps;
+        for (int i = 0; i < steps; ++i) {
+            m_solarSystem->updatePhysics(subDt);
+        }
+    } else {
+        m_time->update(deltaTime);
+    }
+    
     m_camera->update(deltaTime);
     
     updateHover();
     
     // Update orbit target if locked to a body
     if (m_lockedBody && m_camera->getMode() == Render::CameraMode::Orbit) {
-        glm::vec3 worldPos = m_lockedBody->getWorldPosition(m_time->getSimulationTime());
+        glm::vec3 worldPos;
+        if (m_solarSystem->isPhysicsEnabled()) {
+            worldPos = m_lockedBody->getPhysicsPosition();
+        } else {
+            worldPos = m_lockedBody->getWorldPosition(m_time->getSimulationTime());
+        }
         worldPos *= m_solarSystem->getSystemScale();
         
         // Update target smoothly
@@ -287,17 +302,21 @@ const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
     
     std::function<void(const Simulation::CelestialBody&, glm::vec3)> checkBody;
     checkBody = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
-        glm::vec3 worldPos = parentPos + body.getPosition(time) * sysScale;
-        float radius = static_cast<float>(body.getRadius());
+        glm::vec3 worldPos;
+        if (m_solarSystem->isPhysicsEnabled()) {
+            worldPos = body.getPhysicsPosition() * sysScale;
+        } else {
+            worldPos = parentPos + body.getPosition(time) * sysScale;
+        }
         
-        if (body.getName() == "Sun" || body.getName() == "Kepler-90" || body.getName() == "TRAPPIST-1") {
-            radius = 1.5f; // Visual sun size
+        float radius = static_cast<float>(body.getRadius());
+        if (body.getName() == "Sun" || body.getName() == "Kepler-90" || body.getName() == "TRAPPIST-1" || body.getName() == "Singularity") {
+            radius = 1.5f; 
         } else {
             radius *= planetScale;
         }
         
-        // 1. Ray-sphere intersection (with a small fudge factor for better feel)
-        float clickRadius = std::max(radius, 0.1f); // Min selectable size
+        float clickRadius = std::max(radius, 0.15f); 
         glm::vec3 L = worldPos - rayOrigin;
         float tca = glm::dot(L, rayDir);
         if (tca >= 0) {
@@ -311,7 +330,6 @@ const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
             }
         }
         
-        // 2. Label proximity picking
         if (m_renderer->isShowLabels()) {
             glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
             if (clipPos.z > 0 && clipPos.w > 0) {
@@ -321,12 +339,9 @@ const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
                 
                 float dx = mouseX - sx;
                 float dy = mouseY - sy;
-                float distSq = dx*dx + dy*dy;
-                
-                if (distSq < 400.0f) { // 20 pixel radius around label
-                    // Prefer label picking for very small distant objects
+                if (dx*dx + dy*dy < 900.0f) { // 30px radius
                     if (minDist > 100.0f) { 
-                        minDist = 0.0f; // Force selection
+                        minDist = 0.0f; 
                         bestBody = &body;
                     }
                 }
@@ -346,21 +361,7 @@ const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
 }
 
 void App::renderUI() {
-    // Labels Toggle
-    if (ImGui::Begin("Visual Settings", nullptr)) {
-        bool showOrbits = m_renderer->isShowOrbits();
-        if (ImGui::Checkbox("Show Orbital Rings", &showOrbits)) {
-            m_renderer->setShowOrbits(showOrbits);
-        }
-        
-        bool showLabels = m_renderer->isShowLabels();
-        if (ImGui::Checkbox("Show Planet Labels", &showLabels)) {
-            m_renderer->setShowLabels(showLabels);
-        }
-    }
-    ImGui::End();
-
-    // 1. Top bar / Stats Overlay
+    // 1. Stats Overlay
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.35f);
     if (ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove)) {
@@ -375,202 +376,93 @@ void App::renderUI() {
     }
     ImGui::End();
 
-    // Planet Labels
-    if (m_renderer->isShowLabels()) {
-        int w, h;
-        m_window->getSize(w, h);
-        float sw = static_cast<float>(w);
-        float sh = static_cast<float>(h);
-        
-        glm::mat4 viewProj = m_camera->getProjectionMatrix() * m_camera->getViewMatrix();
-        float sysScale = m_solarSystem->getSystemScale();
-        double time = m_time->getSimulationTime();
-        
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-        
-        std::function<void(const Simulation::CelestialBody&, glm::vec3)> drawLabel;
-        drawLabel = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
-            glm::vec3 worldPos = parentPos + body.getPosition(time) * sysScale;
-            glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
-            
-            bool isMoon = body.getParent() != nullptr;
-            bool shouldShowMoonLabel = isMoon && (body.getParent() == m_lockedBody || &body == m_lockedBody);
-            
-            if (clipPos.z > 0 && clipPos.w > 0 && (!isMoon || shouldShowMoonLabel)) {
-                glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
-                float sx = (ndc.x + 1.0f) * 0.5f * sw;
-                float sy = (1.0f - ndc.y) * 0.5f * sh;
-                
-                ImU32 col = (m_hoveredBody == &body || m_selectedBody == &body) ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 150);
-                drawList->AddText(ImVec2(sx + 10, sy - 10), col, body.getName().c_str());
-            }
-            
-            for (const auto& child : body.getChildren()) {
-                drawLabel(*child, worldPos);
-            }
-        };
-        
-        for (const auto& body : m_solarSystem->getBodies()) {
-            drawLabel(*body, glm::vec3(0.0f));
-        }
-    }
-
-    // Info Pop-up (on hover or selection)
-    const Simulation::CelestialBody* infoBody = m_hoveredBody ? m_hoveredBody : m_selectedBody;
-    if (infoBody) {
-        ImGui::SetNextWindowBgAlpha(0.85f);
-        if (m_hoveredBody) {
-            float mx, my;
-            m_inputManager->getMousePosition(mx, my);
-            ImGui::SetNextWindowPos(ImVec2(mx + 20, my + 20), ImGuiCond_Always);
-        } else {
-            ImGui::SetNextWindowPos(ImVec2(10, 100), ImGuiCond_FirstUseEver);
-        }
-        
-        ImGui::Begin("Body Info", nullptr, ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar);
-        ImGui::TextColored(ImVec4(0.4, 0.8, 1.0, 1.0), "%s", infoBody->getName().c_str());
-        ImGui::Separator();
-        
-        if (infoBody->getName() == "Sun" || infoBody->getName() == "Kepler-90" || infoBody->getName() == "TRAPPIST-1") {
-            ImGui::Text("Type: Star");
-            ImGui::Text("Radius: %.1f km (Relative)", infoBody->getRadius());
-        } else {
-            ImGui::Text("Type: Planet/Moon");
-            const auto& op = infoBody->getOrbitalParams();
-            ImGui::Text("Distance: %.3f AU", op.semiMajorAxis);
-            ImGui::Text("Period: %.3f Years", op.orbitalPeriod);
-            ImGui::Text("Eccentricity: %.3f", op.eccentricity);
-        }
-        
-        if (m_hoveredBody && m_hoveredBody != m_selectedBody) {
-            ImGui::TextColored(ImVec4(0.7, 0.7, 0.7, 1.0), "(Click for more info)");
-        }
-        if (infoBody == m_selectedBody) {
-             ImGui::TextColored(ImVec4(0.7, 0.7, 1.0, 1.0), "(Double-click to focus)");
-        }
-        
-        ImGui::End();
-    }
-
-    // 2. Main Control Panel
+    // 2. Control Panel
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, 10), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Always);
     if (ImGui::Begin("Simulation Controls", nullptr)) {
         if (ImGui::CollapsingHeader("System Selection", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const char* systems[] = { "Solar System", "TRAPPIST-1", "Kepler-90", "HR 8799", "Kepler-11", "55 Cancri" };
-            static int currentSystemIdx = 0;
-            if (ImGui::Combo("System", &currentSystemIdx, systems, IM_ARRAYSIZE(systems))) {
-                m_solarSystem->loadSystem(systems[currentSystemIdx]);
-                m_lockedBody = nullptr;
-                m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
+            const std::vector<std::string> planetSystems = { "Solar System", "TRAPPIST-1", "Kepler-90", "Kepler-11", "55 Cancri", "HR 8799" };
+            const std::vector<std::string> specialEvents = { "Black Hole", "Binary Star" };
+
+            ImGui::TextDisabled("Planetary Systems");
+            ImGui::PushID("Planets");
+            for (const auto& name : planetSystems) {
+                bool isSelected = (m_solarSystem->getCurrentSystemName() == name);
+                if (ImGui::Selectable(name.c_str(), isSelected)) {
+                    m_solarSystem->loadSystem(name);
+                    m_lockedBody = nullptr;
+                    m_selectedBody = nullptr;
+                    m_hoveredBody = nullptr;
+                    m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
+                }
             }
+            ImGui::PopID();
+
+            ImGui::Separator();
+            ImGui::TextDisabled("Special Events");
+            ImGui::PushID("Events");
+            for (const auto& name : specialEvents) {
+                bool isSelected = (m_solarSystem->getCurrentSystemName() == name);
+                if (ImGui::Selectable(name.c_str(), isSelected)) {
+                    m_solarSystem->loadSystem(name);
+                    m_lockedBody = nullptr;
+                    m_selectedBody = nullptr;
+                    m_hoveredBody = nullptr;
+                    m_camera->transitionToTarget(glm::vec3(0.0f), 40.0f, 0.8f);
+                }
+            }
+            ImGui::PopID();
         }
 
         if (ImGui::CollapsingHeader("Time Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-            // Internal scale where 1.0 = 1 day per real second
             const double DAY_IN_YEARS = 1.0 / 365.25;
-            const double SECOND_IN_YEARS = 1.0 / (365.25 * 86400.0);
-            
             float multiplier = static_cast<float>(m_time->getTimeScale() / DAY_IN_YEARS);
-            
-            // Logarithmic-like slider for better sensitivity at low speeds
             if (ImGui::SliderFloat("Speed (Days/s)", &multiplier, 0.0f, 400.0f, "%.4f", ImGuiSliderFlags_Logarithmic)) {
                 m_time->setTimeScale(static_cast<double>(multiplier) * DAY_IN_YEARS);
             }
-            
-            ImGui::Text("Presets:");
-            if (ImGui::Button("IRL (Real-time)")) m_time->setTimeScale(SECOND_IN_YEARS);
-            ImGui::SameLine();
-            if (ImGui::Button("1x")) m_time->setTimeScale(1.0 * DAY_IN_YEARS);
-            ImGui::SameLine();
-            if (ImGui::Button("2x")) m_time->setTimeScale(2.0 * DAY_IN_YEARS);
-            ImGui::SameLine();
-            if (ImGui::Button("4x")) m_time->setTimeScale(4.0 * DAY_IN_YEARS);
-            ImGui::SameLine();
-            if (ImGui::Button("100x")) m_time->setTimeScale(100.0 * DAY_IN_YEARS);
-            
             if (ImGui::Button(m_time->isPaused() ? "Resume (P)" : "Pause (P)", ImVec2(-1, 0))) {
                 m_time->setPaused(!m_time->isPaused());
             }
         }
 
-        if (ImGui::CollapsingHeader("Camera Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const char* modeNames[] = { "Orbit", "Free Fly" };
-            int currentMode = static_cast<int>(m_camera->getMode());
-            if (ImGui::Combo("Mode (Tab)", &currentMode, modeNames, 2)) {
-                m_camera->setMode(static_cast<Render::CameraMode>(currentMode));
-                if (m_camera->getMode() == Render::CameraMode::FreeFly) {
-                    m_lockedBody = nullptr;
-                }
-            }
-            
-            float sensitivity = m_camera->getMouseSensitivity();
-            if (ImGui::SliderFloat("Sensitivity", &sensitivity, 0.05f, 1.0f)) {
-                m_camera->setMouseSensitivity(sensitivity);
-            }
-            
-            bool invertY = m_camera->isInvertY();
-            if (ImGui::Checkbox("Invert Y", &invertY)) {
-                m_camera->setInvertY(invertY);
-            }
-            
-            if (ImGui::Button("Reset View (O)", ImVec2(-1, 0))) {
-                m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.8f);
-                m_lockedBody = nullptr;
-            }
-        }
-
         if (ImGui::CollapsingHeader("Visual Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
             bool showOrbits = m_renderer->isShowOrbits();
-            if (ImGui::Checkbox("Show Orbital Rings", &showOrbits)) {
-                m_renderer->setShowOrbits(showOrbits);
-            }
+            if (ImGui::Checkbox("Show Orbital Rings", &showOrbits)) m_renderer->setShowOrbits(showOrbits);
             
             bool showLabels = m_renderer->isShowLabels();
-            if (ImGui::Checkbox("Show Planet Labels", &showLabels)) {
-                m_renderer->setShowLabels(showLabels);
-            }
+            if (ImGui::Checkbox("Show Planet Labels", &showLabels)) m_renderer->setShowLabels(showLabels);
+
+            bool physicsEnabled = m_solarSystem->isPhysicsEnabled();
+            if (ImGui::Checkbox("N-Body Gravity (Chaos)", &physicsEnabled)) m_solarSystem->setPhysicsEnabled(physicsEnabled);
         }
 
-        // 4. Historic Presets (Solar System Only)
         if (m_solarSystem->getCurrentSystemName() == "Solar System") {
-            if (ImGui::CollapsingHeader("Historic Events", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.3f, 0.4f, 1.0f));
-                
+            if (ImGui::CollapsingHeader("Historic Presets")) {
                 auto eventBtn = [this](const char* label, double time) {
                     if (ImGui::Button(label, ImVec2(-1, 0))) {
                         m_time->setSimulationTime(time);
                         m_time->setPaused(true);
-                        // Reset camera focus when jumping to broad events
                         m_lockedBody = nullptr;
                     }
                 };
-
                 eventBtn("Great Conjunction (2020)", 20.972);
                 eventBtn("Total Solar Eclipse (2017)", 17.638);
                 eventBtn("Venus Transit (2012)", 12.427);
-                eventBtn("Shoemaker-Levy 9 Impact (1994)", -5.460);
-                eventBtn("Voyager 2 Neptune Flyby (1989)", -10.353);
-
-                ImGui::PopStyleColor();
-                ImGui::TextWrapped("Clicking an event pauses the simulation at that date.");
+                eventBtn("Shoemaker-Levy 9 (1994)", -5.460);
+                eventBtn("Voyager 2 Neptune (1989)", -10.353);
             }
         }
     }
     ImGui::End();
 
-    // 3. Navigation / Focus Panel
+    // 3. Celestial Bodies Panel
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, ImGui::GetIO().DisplaySize.y - 260), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(300, 250), ImGuiCond_Always);
     if (ImGui::Begin("Celestial Bodies", nullptr)) {
-        if (ImGui::Button("Clear Focus", ImVec2(-1, 0))) {
-            m_lockedBody = nullptr;
-        }
+        if (ImGui::Button("Clear Focus", ImVec2(-1, 0))) m_lockedBody = nullptr;
         ImGui::Separator();
-
         ImGui::BeginChild("BodyList");
         
-        // Sun
         const auto* sun = m_solarSystem->getSun();
         if (sun) {
             bool isSelected = (m_lockedBody == sun);
@@ -580,72 +472,104 @@ void App::renderUI() {
             }
         }
 
+        auto& bodies = m_solarSystem->getBodies();
         float systemScale = m_solarSystem->getSystemScale();
         float planetScale = m_solarSystem->getPlanetScale();
-        
-        // Planets
-        auto& bodies = m_solarSystem->getBodies();
         for (size_t i = 1; i < bodies.size(); ++i) {
             const auto& body = bodies[i];
-            float bodyRadius = static_cast<float>(body->getRadius()) * planetScale;
-            float orbitDist = std::max(bodyRadius * 5.0f, 2.0f);
-            
+            ImGui::PushID(body.get());
             bool isSelected = (m_lockedBody == body.get());
             if (ImGui::Selectable(body->getName().c_str(), isSelected)) {
                 m_lockedBody = body.get();
-                glm::vec3 worldPos = body->getWorldPosition(m_time->getSimulationTime()) * systemScale;
-                m_camera->transitionToTarget(worldPos, orbitDist, 0.8f);
+                glm::vec3 worldPos = (m_solarSystem->isPhysicsEnabled() ? body->getPhysicsPosition() : body->getWorldPosition(m_time->getSimulationTime())) * systemScale;
+                m_camera->transitionToTarget(worldPos, std::max(static_cast<float>(body->getRadius()) * planetScale * 5.0f, 2.0f), 0.8f);
             }
-            
-            // Moons
             for (const auto& child : body->getChildren()) {
-                std::string label = "  > " + child->getName();
-                float childRadius = static_cast<float>(child->getRadius()) * planetScale;
-                float childOrbitDist = std::max(childRadius * 6.0f, 1.2f);
-                
-                isSelected = (m_lockedBody == child.get());
-                if (ImGui::Selectable(label.c_str(), isSelected)) {
+                ImGui::PushID(child.get());
+                bool childSelected = (m_lockedBody == child.get());
+                if (ImGui::Selectable(("  > " + child->getName()).c_str(), childSelected)) {
                     m_lockedBody = child.get();
-                    glm::vec3 worldPos = child->getWorldPosition(m_time->getSimulationTime()) * systemScale;
-                    m_camera->transitionToTarget(worldPos, childOrbitDist, 0.8f);
+                    glm::vec3 worldPos = (m_solarSystem->isPhysicsEnabled() ? child->getPhysicsPosition() : child->getWorldPosition(m_time->getSimulationTime())) * systemScale;
+                    m_camera->transitionToTarget(worldPos, std::max(static_cast<float>(child->getRadius()) * planetScale * 6.0f, 1.2f), 0.8f);
                 }
+                ImGui::PopID();
             }
+            ImGui::PopID();
         }
         ImGui::EndChild();
     }
     ImGui::End();
 
-    // 4. Help Overlay
+    // Planet Labels (Background)
+    if (m_renderer->isShowLabels()) {
+        int w, h; m_window->getSize(w, h);
+        float sw = static_cast<float>(w), sh = static_cast<float>(h);
+        glm::mat4 viewProj = m_camera->getProjectionMatrix() * m_camera->getViewMatrix();
+        float sysScale = m_solarSystem->getSystemScale();
+        double time = m_time->getSimulationTime();
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        
+        std::function<void(const Simulation::CelestialBody&, glm::vec3)> drawLabel;
+        drawLabel = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
+            glm::vec3 worldPos = m_solarSystem->isPhysicsEnabled() ? (body.getPhysicsPosition() * sysScale) : ((parentPos / sysScale + body.getPosition(time)) * sysScale);
+            glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
+            bool isMoon = body.getParent() != nullptr;
+            bool shouldShow = !isMoon || (body.getParent() == m_lockedBody || &body == m_lockedBody);
+            if (clipPos.z > 0 && clipPos.w > 0 && shouldShow) {
+                glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
+                float sx = (ndc.x + 1.0f) * 0.5f * sw, sy = (1.0f - ndc.y) * 0.5f * sh;
+                ImU32 col = (m_hoveredBody == &body || m_selectedBody == &body) ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 150);
+                drawList->AddText(ImVec2(sx + 10, sy - 10), col, body.getName().c_str());
+            }
+            for (const auto& child : body.getChildren()) drawLabel(*child, worldPos);
+        };
+        for (const auto& body : m_solarSystem->getBodies()) drawLabel(*body, glm::vec3(0.0f));
+    }
+
+    // Info Tooltip
+    const Simulation::CelestialBody* infoBody = m_hoveredBody ? m_hoveredBody : m_selectedBody;
+    if (infoBody && !m_inputManager->uiWantsMouse()) {
+        ImGui::SetNextWindowBgAlpha(0.85f);
+        if (m_hoveredBody) {
+            float mx, my; m_inputManager->getMousePosition(mx, my);
+            ImGui::SetNextWindowPos(ImVec2(mx + 20, my + 20), ImGuiCond_Always);
+        } else ImGui::SetNextWindowPos(ImVec2(10, 100), ImGuiCond_FirstUseEver);
+        
+        ImGui::Begin("Body Info", nullptr, ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar);
+        ImGui::TextColored(ImVec4(0.4, 0.8, 1.0, 1.0), "%s", infoBody->getName().c_str());
+        ImGui::Separator();
+        if (infoBody->getName() == "Sun" || infoBody->getName() == "Copernicus" || infoBody->getName() == "Singularity") {
+            ImGui::Text("Type: Star / Singularity");
+            ImGui::Text("Radius: %.1f Earth Units", infoBody->getRadius());
+        } else {
+            ImGui::Text("Type: Planet/Moon");
+            const auto& op = infoBody->getOrbitalParams();
+            ImGui::Text("Distance: %.3f AU", op.semiMajorAxis);
+            ImGui::Text("Period: %.3f Years", op.orbitalPeriod);
+        }
+        if (m_hoveredBody && m_hoveredBody != m_selectedBody) ImGui::TextColored(ImVec4(0.7, 0.7, 0.7, 1.0), "(Click to select)");
+        else if (infoBody == m_selectedBody) ImGui::TextColored(ImVec4(0.7, 0.7, 1.0, 1.0), "(Double-click to focus)");
+        ImGui::End();
+    }
+
+    // Help Button
     static bool showHelp = false;
     ImGui::SetNextWindowPos(ImVec2(10, ImGui::GetIO().DisplaySize.y - 40), ImGuiCond_Always);
     if (ImGui::Begin("HelpToggle", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground)) {
-        if (ImGui::Button("? Controls Help")) {
-            showHelp = !showHelp;
-        }
+        if (ImGui::Button("? Controls Help")) showHelp = !showHelp;
     }
     ImGui::End();
-
     if (showHelp) {
         ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         if (ImGui::Begin("Controls Help", &showHelp, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Mouse Controls:");
-            ImGui::BulletText("Right-Click + Drag: Rotate Camera");
-            ImGui::BulletText("Scroll Wheel: Zoom In/Out");
-            ImGui::BulletText("Middle-Click + Drag: Move Orbit Target");
-            
+            ImGui::BulletText("Right-Click + Drag: Rotate");
+            ImGui::BulletText("Scroll Wheel: Zoom");
+            ImGui::BulletText("Middle-Click: Pan");
             ImGui::Separator();
-            ImGui::Text("Keyboard Controls:");
-            ImGui::BulletText("Tab: Toggle Camera Mode (Orbit / Free Fly)");
-            ImGui::BulletText("W / S: Zoom / Move Forward & Backward");
-            ImGui::BulletText("A / D: Strafe Left & Right (Free Fly)");
-            ImGui::BulletText("Q / E: Move Up & Down (Free Fly)");
-            ImGui::BulletText("P: Toggle Pause Simulation");
-            ImGui::BulletText("O: Reset Camera View");
-            ImGui::BulletText("Esc: Exit Application");
-            
-            if (ImGui::Button("Close", ImVec2(-1, 0))) {
-                showHelp = false;
-            }
+            ImGui::BulletText("Tab: Camera Mode");
+            ImGui::BulletText("Double-Click Planet: Focus");
+            ImGui::BulletText("P: Pause | O: Reset View");
+            if (ImGui::Button("Close", ImVec2(-1, 0))) showHelp = false;
         }
         ImGui::End();
     }

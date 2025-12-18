@@ -101,7 +101,16 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
     // Recursive body rendering function
     std::function<void(const Simulation::CelestialBody&, glm::mat4)> drawBodyRecursive;
     drawBodyRecursive = [&](const Simulation::CelestialBody& body, glm::mat4 parentTransform) {
-        glm::vec3 localPos = body.getPosition(simulationTime);
+        glm::vec3 localPos;
+        if (solarSystem.isPhysicsEnabled()) {
+            localPos = body.getPhysicsPosition();
+            // In physics mode, position is already in world space, but we follow the hierarchy in the loop.
+            // Actually, my physics integrator updates world space positions.
+            // So I should pass identity as parent transform or just use the physics position directly.
+        } else {
+            localPos = body.getPosition(simulationTime);
+        }
+        
         float visualRadiusScale = visualPlanetScale;
         bool isSun = false;
         
@@ -110,10 +119,15 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
             isSun = true;
         }
         
-        glm::mat4 posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
+        glm::mat4 posMatrix;
+        if (solarSystem.isPhysicsEnabled()) {
+             posMatrix = glm::translate(glm::mat4(1.0f), body.getPhysicsPosition() * visualDistanceScale);
+        } else {
+             posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
+        }
         
         // Draw Orbits
-        if (m_showOrbits) {
+        if (m_showOrbits && !solarSystem.isPhysicsEnabled()) {
             glUseProgram(orbitShader);
             GLint oModelLoc = m_shaderManager->getUniformLocation(orbitShader, "model");
             GLint oViewLoc = m_shaderManager->getUniformLocation(orbitShader, "view");
