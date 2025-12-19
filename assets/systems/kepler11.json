@@ -7,6 +7,7 @@
   "bodies": [
     {
       "name": "Kepler-11",
+      "type": "star",
       "radius": 120.0,
       "color": [1.0, 1.0, 0.0],
       "orbit": {

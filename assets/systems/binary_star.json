@@ -7,6 +7,7 @@
   "bodies": [
     {
       "name": "Star Alpha",
+      "type": "star",
       "radius": 50.0,
       "color": [1.0, 0.8, 0.2],
       "mass": 500000.0,
@@ -22,6 +23,7 @@
     },
     {
       "name": "Star Beta",
+      "type": "star",
       "radius": 40.0,
       "color": [1.0, 0.5, 0.1],
       "mass": 400000.0,

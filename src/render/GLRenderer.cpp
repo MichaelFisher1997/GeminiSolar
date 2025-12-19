@@ -8,6 +8,56 @@
 
 namespace Render {
 
+void GLRenderer::drawOrbit(const Simulation::CelestialBody& body,
+                           const glm::mat4& parentTransform,
+                           const glm::mat4& view,
+                           const glm::mat4& proj,
+                           float visualDistanceScale,
+                           const glm::vec3& color,
+                           float opacity,
+                           int segments) {
+    GLuint orbitShader = m_shaderManager->getShader(SHADER_ORBIT);
+    glUseProgram(orbitShader);
+    
+    GLint oModelLoc = m_shaderManager->getUniformLocation(orbitShader, "model");
+    GLint oViewLoc = m_shaderManager->getUniformLocation(orbitShader, "view");
+    GLint oProjLoc = m_shaderManager->getUniformLocation(orbitShader, "projection");
+    GLint oColorLoc = m_shaderManager->getUniformLocation(orbitShader, "orbitColor");
+    GLint oOpacityLoc = m_shaderManager->getUniformLocation(orbitShader, "opacity");
+    
+    glUniformMatrix4fv(oViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(oProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
+    glUniformMatrix4fv(oModelLoc, 1, GL_FALSE, glm::value_ptr(parentTransform));
+    glUniform3fv(oColorLoc, 1, glm::value_ptr(color));
+    glUniform1f(oOpacityLoc, opacity);
+    
+    // Generate orbit points
+    std::vector<glm::vec3> points;
+    points.reserve(segments);
+    
+    Simulation::OrbitalParams params = body.getOrbitalParams();
+    for (int i = 0; i < segments; ++i) {
+        double meanAnomaly = (static_cast<double>(i) / segments) * 2.0 * glm::pi<double>();
+        Simulation::OrbitalParams p = params;
+        p.meanAnomaly0 = meanAnomaly;
+        points.push_back(Simulation::OrbitModel::calculatePosition(p, 0.0) * visualDistanceScale);
+    }
+    
+    // Use static VAO/VBO for efficiency
+    static GLuint vao = 0, vbo = 0;
+    if (vao == 0) {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+    }
+    
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STREAM_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+    glEnableVertexAttribArray(0);
+    glDrawArrays(GL_LINE_LOOP, 0, static_cast<GLsizei>(points.size()));
+}
+
 GLRenderer::GLRenderer(Platform::SDLWindow& window) 
     : m_window(window) {
     
@@ -73,7 +123,6 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     GLuint planetShader = m_shaderManager->getShader(SHADER_PLANET);
-    GLuint orbitShader = m_shaderManager->getShader(SHADER_ORBIT);
     
     m_shaderManager->useShader(planetShader);
     GLint modelLoc = m_shaderManager->getUniformLocation(planetShader, "model");
@@ -114,7 +163,7 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
         float visualRadiusScale = visualPlanetScale;
         bool isSun = false;
         
-        if (body.getName() == solarSystem.getSun()->getName()) {
+        if (body.isStar()) {
             visualRadiusScale = 1.5f / static_cast<float>(body.getRadius());
             isSun = true;
         }
@@ -126,48 +175,11 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
              posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
         }
         
-        // Draw Orbits
+        // Draw Orbits for children (moons)
         if (m_showOrbits && !solarSystem.isPhysicsEnabled()) {
-            glUseProgram(orbitShader);
-            GLint oModelLoc = m_shaderManager->getUniformLocation(orbitShader, "model");
-            GLint oViewLoc = m_shaderManager->getUniformLocation(orbitShader, "view");
-            GLint oProjLoc = m_shaderManager->getUniformLocation(orbitShader, "projection");
-            GLint oColorLoc = m_shaderManager->getUniformLocation(orbitShader, "orbitColor");
-            GLint oOpacityLoc = m_shaderManager->getUniformLocation(orbitShader, "opacity");
-            
-            glUniformMatrix4fv(oViewLoc, 1, GL_FALSE, glm::value_ptr(view));
-            glUniformMatrix4fv(oProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
-            
             for (const auto& child : body.getChildren()) {
-                const int segments = 128;
-                std::vector<glm::vec3> points;
-                points.reserve(segments);
-                
-                Simulation::OrbitalParams params = child->getOrbitalParams();
-                for (int i = 0; i < segments; ++i) {
-                    double meanAnomaly = (static_cast<double>(i) / segments) * 2.0 * glm::pi<double>();
-                    Simulation::OrbitalParams p = params;
-                    p.meanAnomaly0 = meanAnomaly;
-                    // Calculate position relative to parent
-                    points.push_back(Simulation::OrbitModel::calculatePosition(p, 0.0) * visualDistanceScale);
-                }
-                
-                static GLuint vao_moon = 0, vbo_moon = 0;
-                if (vao_moon == 0) {
-                    glGenVertexArrays(1, &vao_moon);
-                    glGenBuffers(1, &vbo_moon);
-                }
-                
-                glUniformMatrix4fv(oModelLoc, 1, GL_FALSE, glm::value_ptr(posMatrix));
-                glUniform3f(oColorLoc, 0.4f, 0.4f, 0.5f);
-                glUniform1f(oOpacityLoc, 0.2f);
-                
-                glBindVertexArray(vao_moon);
-                glBindBuffer(GL_ARRAY_BUFFER, vbo_moon);
-                glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STREAM_DRAW);
-                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-                glEnableVertexAttribArray(0);
-                glDrawArrays(GL_LINE_LOOP, 0, static_cast<GLsizei>(points.size()));
+                drawOrbit(*child, posMatrix, view, proj, visualDistanceScale,
+                          glm::vec3(0.4f, 0.4f, 0.5f), 0.2f, 128);
             }
             glUseProgram(planetShader);
         }
@@ -192,45 +204,10 @@ void GLRenderer::render(const Simulation::SolarSystem& solarSystem,
     };
     
     for (const auto& body : bodies) {
+        // Draw planet orbits (not for the sun)
         if (m_showOrbits && body.get() != solarSystem.getSun()) {
-            glUseProgram(orbitShader);
-            GLint oModelLoc = m_shaderManager->getUniformLocation(orbitShader, "model");
-            GLint oViewLoc = m_shaderManager->getUniformLocation(orbitShader, "view");
-            GLint oProjLoc = m_shaderManager->getUniformLocation(orbitShader, "projection");
-            GLint oColorLoc = m_shaderManager->getUniformLocation(orbitShader, "orbitColor");
-            GLint oOpacityLoc = m_shaderManager->getUniformLocation(orbitShader, "opacity");
-            
-            glUniformMatrix4fv(oViewLoc, 1, GL_FALSE, glm::value_ptr(view));
-            glUniformMatrix4fv(oProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
-            glUniformMatrix4fv(oModelLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
-            glUniform3f(oColorLoc, 0.3f, 0.3f, 0.4f);
-            glUniform1f(oOpacityLoc, 0.3f);
-            
-            // Draw elliptical orbit path
-            const int segments = 256;
-            std::vector<glm::vec3> points;
-            points.reserve(segments);
-            
-            Simulation::OrbitalParams params = body->getOrbitalParams();
-            for (int i = 0; i < segments; ++i) {
-                double meanAnomaly = (static_cast<double>(i) / segments) * 2.0 * glm::pi<double>();
-                Simulation::OrbitalParams p = params;
-                p.meanAnomaly0 = meanAnomaly;
-                points.push_back(Simulation::OrbitModel::calculatePosition(p, 0.0) * visualDistanceScale);
-            }
-            
-            static GLuint vao = 0, vbo = 0;
-            if (vao == 0) {
-                glGenVertexArrays(1, &vao);
-                glGenBuffers(1, &vbo);
-            }
-            glBindVertexArray(vao);
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STREAM_DRAW);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-            glEnableVertexAttribArray(0);
-            glDrawArrays(GL_LINE_LOOP, 0, static_cast<GLsizei>(points.size()));
-            
+            drawOrbit(*body, glm::mat4(1.0f), view, proj, visualDistanceScale,
+                      glm::vec3(0.3f, 0.3f, 0.4f), 0.3f, 256);
             glUseProgram(planetShader);
         }
         
