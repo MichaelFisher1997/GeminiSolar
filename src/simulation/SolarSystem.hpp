@@ -21,11 +21,23 @@ public:
     float getSystemScale() const { return m_systemScale; } 
     float getPlanetScale() const { return m_planetScale; }
 
+    // Physics
+    void setPhysicsEnabled(bool enabled);
+    bool isPhysicsEnabled() const { return m_physicsEnabled; }
+    void updatePhysics(double dt);
+    void resetPhysics();
+
 private:
+    void loadFallbackSolarSystem();
+    void computeGravity();
+    
     std::vector<std::unique_ptr<CelestialBody>> m_bodies;
     std::string m_currentSystemName;
     float m_systemScale = 10.0f; 
-    float m_planetScale = 1.0f; // Visual multiplier for planet radius
+    float m_planetScale = 1.0f; 
+    
+    bool m_physicsEnabled = false;
+    double m_gravityConstant = 0.0001; // Tuned for the visual scale
 };
 
 } // namespace Simulation

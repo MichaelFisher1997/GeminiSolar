@@ -31,6 +31,15 @@ public:
     const glm::vec3& getColor() const { return m_color; }
     const OrbitalParams& getOrbitalParams() const { return m_orbitalParams; }
     
+    // Physics State
+    void setPosition(const glm::vec3& pos) { m_physicsPosition = pos; }
+    void setVelocity(const glm::vec3& vel) { m_physicsVelocity = vel; }
+    void setMass(double mass) { m_mass = mass; }
+    
+    glm::vec3 getPhysicsPosition() const { return m_physicsPosition; }
+    glm::vec3 getPhysicsVelocity() const { return m_physicsVelocity; }
+    double getMass() const { return m_mass; }
+    
     void addChild(std::unique_ptr<CelestialBody> child);
     const std::vector<std::unique_ptr<CelestialBody>>& getChildren() const { return m_children; }
     
@@ -47,6 +56,11 @@ private:
     OrbitalParams m_orbitalParams;
     std::vector<std::unique_ptr<CelestialBody>> m_children;
     const CelestialBody* m_parent = nullptr;
+
+    // Physics State
+    glm::vec3 m_physicsPosition = glm::vec3(0.0f);
+    glm::vec3 m_physicsVelocity = glm::vec3(0.0f);
+    double m_mass = 1.0;
 };
 
 } // namespace Simulation

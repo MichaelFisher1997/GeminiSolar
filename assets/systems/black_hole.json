@@ -1,0 +1,80 @@
+{
+  "name": "Black Hole",
+  "scale": {
+    "system": 200.0,
+    "planet": 1.0
+  },
+  "bodies": [
+    {
+      "name": "Singularity",
+      "radius": 1.0,
+      "color": [0.1, 0.0, 0.2],
+      "mass": 100000000.0,
+      "orbit": {
+        "semiMajorAxis": 0.0,
+        "eccentricity": 0.0,
+        "inclination": 0.0,
+        "period": 1.0,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "Acreation Disk (A)",
+      "radius": 2.0,
+      "color": [1.0, 0.5, 0.0],
+      "orbit": {
+        "semiMajorAxis": 5.0,
+        "eccentricity": 0.05,
+        "inclination": 0.0,
+        "period": 0.01,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "Acreation Disk (B)",
+      "radius": 1.5,
+      "color": [1.0, 0.8, 0.2],
+      "orbit": {
+        "semiMajorAxis": 8.0,
+        "eccentricity": 0.1,
+        "inclination": 5.0,
+        "period": 0.02,
+        "meanAnomaly": 90.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "The Survivor",
+      "radius": 1.0,
+      "color": [0.2, 0.8, 1.0],
+      "orbit": {
+        "semiMajorAxis": 25.0,
+        "eccentricity": 0.6,
+        "inclination": 45.0,
+        "period": 0.1,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "Interstellar Comet",
+      "radius": 0.5,
+      "color": [0.9, 0.9, 1.0],
+      "orbit": {
+        "semiMajorAxis": 50.0,
+        "eccentricity": 0.9,
+        "inclination": 80.0,
+        "period": 0.3,
+        "meanAnomaly": 180.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    }
+  ]
+}

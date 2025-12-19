@@ -1,405 +1,254 @@
 #include "GLRenderer.hpp"
-#include <iostream>
-#include <stdexcept>
-#include <cmath>
-#include <functional>
+#include "core/Logger.hpp"
+#include "simulation/OrbitModel.hpp"
 #include <glm/gtc/type_ptr.hpp>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
+#include <functional>
 
 namespace Render {
 
 GLRenderer::GLRenderer(Platform::SDLWindow& window) 
     : m_window(window) {
     
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
-    m_glContext = SDL_GL_CreateContext(window.getHandle());
-    if (!m_glContext) {
-        throw std::runtime_error("Failed to create OpenGL context: " + std::string(SDL_GetError()));
-    }
-
-    SDL_GL_MakeCurrent(window.getHandle(), m_glContext);
-    
-    glewExperimental = GL_TRUE; 
-    GLenum err = glewInit();
-    if (GLEW_OK != err) {
-        throw std::runtime_error("Failed to initialize GLEW: " + std::string((const char*)glewGetErrorString(err)));
-    }
-
     initGL();
-    initImGui();
-    createShaders();
-    createSphereMesh();
-    createOrbitMesh();
+    
+    // Create managers
+    m_shaderManager = std::make_unique<ShaderManager>();
+    m_uiManager = std::make_unique<UIManager>(window, window.getGLContext());
+    
+    loadShaders();
+    createMeshes();
+    
+    LOG_INFO("GLRenderer", "OpenGL renderer initialized");
 }
 
 GLRenderer::~GLRenderer() {
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplSDL3_Shutdown();
-    ImGui::DestroyContext();
-
-    glDeleteVertexArrays(1, &m_vao);
-    glDeleteBuffers(1, &m_vbo);
-    glDeleteBuffers(1, &m_ebo);
-    
-    glDeleteVertexArrays(1, &m_orbitVao);
-    glDeleteBuffers(1, &m_orbitVbo);
-    
-    glDeleteProgram(m_shaderProgram);
-    SDL_GL_DestroyContext(m_glContext);
+    m_sphereMesh.reset();
+    m_orbitMesh.reset();
+    m_uiManager.reset();
+    m_shaderManager.reset();
+    LOG_INFO("GLRenderer", "OpenGL renderer destroyed");
 }
 
 void GLRenderer::initGL() {
     glEnable(GL_DEPTH_TEST);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Pitch black
+    LOG_INFO("GLRenderer", "OpenGL state initialized");
 }
 
-void GLRenderer::initImGui() {
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-    ImGui::StyleColorsDark();
-
-    ImGui_ImplSDL3_InitForOpenGL(m_window.getHandle(), m_glContext);
-    ImGui_ImplOpenGL3_Init("#version 330");
-}
-
-void GLRenderer::createShaders() {
-    const char* vertexShaderSource = R"(
-        #version 330 core
-        layout (location = 0) in vec3 aPos;
-        layout (location = 1) in vec3 aColor; 
-        layout (location = 2) in vec3 aNormal;
-
-        out vec3 FragPos;
-        out vec3 Normal;
-
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 projection;
-
-        void main() {
-            FragPos = vec3(model * vec4(aPos, 1.0));
-            Normal = mat3(transpose(inverse(model))) * aNormal;  
-            gl_Position = projection * view * vec4(FragPos, 1.0);
-        }
-    )";
-
-    const char* fragmentShaderSource = R"(
-        #version 330 core
-        out vec4 FragColor;
-
-        in vec3 FragPos;
-        in vec3 Normal;
-
-        uniform vec3 objectColor;
-        uniform int isSun; // 1 if Sun, 0 otherwise
-
-        void main() {
-            if (isSun == 1) {
-                FragColor = vec4(objectColor, 1.0);
-                return;
-            }
-
-            float ambientStrength = 0.2;
-            vec3 lightColor = vec3(1.0, 1.0, 1.0);
-            vec3 ambient = ambientStrength * lightColor;
-  
-            vec3 norm = normalize(Normal);
-            vec3 lightPos = vec3(0.0, 0.0, 0.0); 
-            vec3 lightDir = normalize(lightPos - FragPos);
-            float diff = max(dot(norm, lightDir), 0.0);
-            vec3 diffuse = diff * lightColor;
-            
-            vec3 result = (ambient + diffuse) * objectColor;
-            FragColor = vec4(result, 1.0);
-        } 
-    )";
-
-    auto compileShader = [](GLenum type, const char* source) -> GLuint {
-        GLuint shader = glCreateShader(type);
-        glShaderSource(shader, 1, &source, nullptr);
-        glCompileShader(shader);
-        
-        int success;
-        char infoLog[512];
-        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-        if (!success) {
-            glGetShaderInfoLog(shader, 512, nullptr, infoLog);
-            std::cerr << "ERROR::SHADER::COMPILATION_FAILED\n" << infoLog << std::endl;
-        }
-        return shader;
-    };
-
-    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource);
-    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
-
-    m_shaderProgram = glCreateProgram();
-    glAttachShader(m_shaderProgram, vertexShader);
-    glAttachShader(m_shaderProgram, fragmentShader);
-    glLinkProgram(m_shaderProgram);
-
-    int success;
-    char infoLog[512];
-    glGetProgramiv(m_shaderProgram, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(m_shaderProgram, 512, nullptr, infoLog);
-        std::cerr << "ERROR::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+void GLRenderer::loadShaders() {
+    // Try to load from files first, fall back to embedded shaders
+    try {
+        m_shaderManager->loadFromFiles(SHADER_PLANET, 
+                                        "assets/shaders/planet.vert",
+                                        "assets/shaders/planet.frag");
+        m_shaderManager->loadFromFiles(SHADER_ORBIT, 
+                                        "assets/shaders/orbit.vert",
+                                        "assets/shaders/orbit.frag");
+    } catch (const std::exception& e) {
+        LOG_WARN("GLRenderer", "Failed to load some shader files, some features may be missing: ", e.what());
     }
-
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-
-    m_modelLoc = glGetUniformLocation(m_shaderProgram, "model");
-    m_viewLoc = glGetUniformLocation(m_shaderProgram, "view");
-    m_projLoc = glGetUniformLocation(m_shaderProgram, "projection");
-    m_colorLoc = glGetUniformLocation(m_shaderProgram, "objectColor");
-    m_isSunLoc = glGetUniformLocation(m_shaderProgram, "isSun");
 }
 
-void GLRenderer::createOrbitMesh() {
-    std::vector<float> vertices;
-    const int segments = 128;
-    for (int i = 0; i <= segments; ++i) {
-        float theta = 2.0f * M_PI * float(i) / float(segments);
-        float x = cosf(theta);
-        float z = sinf(theta);
-        vertices.push_back(x);
-        vertices.push_back(0.0f);
-        vertices.push_back(z);
-        vertices.push_back(0.3f); vertices.push_back(0.3f); vertices.push_back(0.3f);
-        vertices.push_back(0.0f); vertices.push_back(1.0f); vertices.push_back(0.0f);
-    }
-
-    glGenVertexArrays(1, &m_orbitVao);
-    glGenBuffers(1, &m_orbitVbo);
-    
-    glBindVertexArray(m_orbitVao);
-    glBindBuffer(GL_ARRAY_BUFFER, m_orbitVbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-    
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-    
-    glBindVertexArray(0);
+void GLRenderer::createMeshes() {
+    m_sphereMesh = MeshFactory::createSphere(48, 48);
+    m_orbitMesh = MeshFactory::createCircle(256);
+    LOG_INFO("GLRenderer", "Meshes created");
 }
 
-void GLRenderer::drawOrbit(float radius, const glm::vec3& color, const glm::mat4& view, const glm::mat4& proj) {
-    (void)view; 
-    (void)proj;
-
-    glUniform1i(m_isSunLoc, 1); 
-    glUniform3fv(m_colorLoc, 1, glm::value_ptr(color));
-    
-    glm::mat4 model = glm::mat4(1.0f);
-    model = glm::scale(model, glm::vec3(radius));
-    
-    glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    
-    glBindVertexArray(m_orbitVao);
-    glDrawArrays(GL_LINE_LOOP, 0, 128);
-    glBindVertexArray(0);
-}
-
-void GLRenderer::createSphereMesh() {
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
-
-    const int sectorCount = 32;
-    const int stackCount = 32;
-    float radius = 1.0f;
-
-    float x, y, z, xy;
-    float nx, ny, nz, lengthInv = 1.0f / radius;
-
-    float sectorStep = 2 * M_PI / sectorCount;
-    float stackStep = M_PI / stackCount;
-    float sectorAngle, stackAngle;
-
-    for(int i = 0; i <= stackCount; ++i)
-    {
-        stackAngle = M_PI / 2 - i * stackStep;        
-        xy = radius * cosf(stackAngle);             
-        z = radius * sinf(stackAngle);              
-
-        for(int j = 0; j <= sectorCount; ++j)
-        {
-            sectorAngle = j * sectorStep;           
-
-            x = xy * cosf(sectorAngle);             
-            y = xy * sinf(sectorAngle);             
-            
-            nx = x * lengthInv;
-            ny = y * lengthInv;
-            nz = z * lengthInv;
-
-            vertices.push_back(x);
-            vertices.push_back(z);
-            vertices.push_back(y);
-            
-            vertices.push_back(1.0f);
-            vertices.push_back(1.0f);
-            vertices.push_back(1.0f);
-
-            vertices.push_back(nx);
-            vertices.push_back(nz);
-            vertices.push_back(ny);
-        }
-    }
-
-    int k1, k2;
-    for(int i = 0; i < stackCount; ++i)
-    {
-        k1 = i * (sectorCount + 1);     
-        k2 = k1 + sectorCount + 1;      
-
-        for(int j = 0; j < sectorCount; ++j, ++k1, ++k2)
-        {
-            if(i != 0) {
-                indices.push_back(k1);
-                indices.push_back(k2);
-                indices.push_back(k1 + 1);
-            }
-            if(i != (stackCount - 1)) {
-                indices.push_back(k1 + 1);
-                indices.push_back(k2);
-                indices.push_back(k2 + 1);
-            }
-        }
-    }
-    
-    m_indexCount = static_cast<uint32_t>(indices.size());
-
-    glGenVertexArrays(1, &m_vao);
-    glGenBuffers(1, &m_vbo);
-    glGenBuffers(1, &m_ebo);
-
-    glBindVertexArray(m_vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-
-    glBindVertexArray(0);
-}
-
-void GLRenderer::render(const Simulation::SolarSystem& solarSystem, const Camera& camera, double simulationTime, std::function<void()> uiCallback) {
+void GLRenderer::render(const Simulation::SolarSystem& solarSystem, 
+                        const Camera& camera, 
+                        double simulationTime, 
+                        const Simulation::CelestialBody* hoveredBody,
+                        std::function<void()> uiCallback) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL3_NewFrame();
-    ImGui::NewFrame();
     
-    if (uiCallback) {
-        uiCallback();
-    }
+    // 1. Begin UI frame
+    m_uiManager->beginFrame();
+    if (uiCallback) uiCallback();
     
-    ImGui::Render();
+    // 2. Render Solar System
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    glUseProgram(m_shaderProgram);
-
+    GLuint planetShader = m_shaderManager->getShader(SHADER_PLANET);
+    GLuint orbitShader = m_shaderManager->getShader(SHADER_ORBIT);
+    
+    m_shaderManager->useShader(planetShader);
+    GLint modelLoc = m_shaderManager->getUniformLocation(planetShader, "model");
+    GLint viewLoc = m_shaderManager->getUniformLocation(planetShader, "view");
+    GLint projLoc = m_shaderManager->getUniformLocation(planetShader, "projection");
+    GLint colorLoc = m_shaderManager->getUniformLocation(planetShader, "objectColor");
+    GLint isSunLoc = m_shaderManager->getUniformLocation(planetShader, "isSun");
+    GLint timeLoc = m_shaderManager->getUniformLocation(planetShader, "time");
+    GLint viewPosLoc = m_shaderManager->getUniformLocation(planetShader, "viewPos");
+    GLint highlightLoc = m_shaderManager->getUniformLocation(planetShader, "highlight");
+    
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = camera.getProjectionMatrix();
+    glm::vec3 viewPos = camera.getPosition();
     
-    proj[1][1] *= -1; 
-
-    glUniformMatrix4fv(m_viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(m_projLoc, 1, GL_FALSE, glm::value_ptr(proj));
-
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(proj));
+    glUniform3fv(viewPosLoc, 1, glm::value_ptr(viewPos));
+    glUniform1f(timeLoc, static_cast<float>(simulationTime));
+    
     const auto& bodies = solarSystem.getBodies();
     float visualDistanceScale = solarSystem.getSystemScale();
-    float visualPlanetScale = solarSystem.getPlanetScale(); 
-
-    // Helper for recursive body rendering
+    float visualPlanetScale = solarSystem.getPlanetScale();
+    
+    // Recursive body rendering function
     std::function<void(const Simulation::CelestialBody&, glm::mat4)> drawBodyRecursive;
     drawBodyRecursive = [&](const Simulation::CelestialBody& body, glm::mat4 parentTransform) {
-        glm::vec3 localPos = body.getPosition(simulationTime);
+        glm::vec3 localPos;
+        if (solarSystem.isPhysicsEnabled()) {
+            localPos = body.getPhysicsPosition();
+            // In physics mode, position is already in world space, but we follow the hierarchy in the loop.
+            // Actually, my physics integrator updates world space positions.
+            // So I should pass identity as parent transform or just use the physics position directly.
+        } else {
+            localPos = body.getPosition(simulationTime);
+        }
         
-        float visualRadiusScale = visualPlanetScale; 
+        float visualRadiusScale = visualPlanetScale;
         bool isSun = false;
-        if (body.getName() == solarSystem.getSun()->getName()) { 
-             visualRadiusScale = 1.5f / body.getRadius(); 
-             isSun = true;
+        
+        if (body.getName() == solarSystem.getSun()->getName()) {
+            visualRadiusScale = 1.5f / static_cast<float>(body.getRadius());
+            isSun = true;
+        }
+        
+        glm::mat4 posMatrix;
+        if (solarSystem.isPhysicsEnabled()) {
+             posMatrix = glm::translate(glm::mat4(1.0f), body.getPhysicsPosition() * visualDistanceScale);
+        } else {
+             posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
+        }
+        
+        // Draw Orbits
+        if (m_showOrbits && !solarSystem.isPhysicsEnabled()) {
+            glUseProgram(orbitShader);
+            GLint oModelLoc = m_shaderManager->getUniformLocation(orbitShader, "model");
+            GLint oViewLoc = m_shaderManager->getUniformLocation(orbitShader, "view");
+            GLint oProjLoc = m_shaderManager->getUniformLocation(orbitShader, "projection");
+            GLint oColorLoc = m_shaderManager->getUniformLocation(orbitShader, "orbitColor");
+            GLint oOpacityLoc = m_shaderManager->getUniformLocation(orbitShader, "opacity");
+            
+            glUniformMatrix4fv(oViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(oProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
+            
+            for (const auto& child : body.getChildren()) {
+                const int segments = 128;
+                std::vector<glm::vec3> points;
+                points.reserve(segments);
+                
+                Simulation::OrbitalParams params = child->getOrbitalParams();
+                for (int i = 0; i < segments; ++i) {
+                    double meanAnomaly = (static_cast<double>(i) / segments) * 2.0 * glm::pi<double>();
+                    Simulation::OrbitalParams p = params;
+                    p.meanAnomaly0 = meanAnomaly;
+                    // Calculate position relative to parent
+                    points.push_back(Simulation::OrbitModel::calculatePosition(p, 0.0) * visualDistanceScale);
+                }
+                
+                static GLuint vao_moon = 0, vbo_moon = 0;
+                if (vao_moon == 0) {
+                    glGenVertexArrays(1, &vao_moon);
+                    glGenBuffers(1, &vbo_moon);
+                }
+                
+                glUniformMatrix4fv(oModelLoc, 1, GL_FALSE, glm::value_ptr(posMatrix));
+                glUniform3f(oColorLoc, 0.4f, 0.4f, 0.5f);
+                glUniform1f(oOpacityLoc, 0.2f);
+                
+                glBindVertexArray(vao_moon);
+                glBindBuffer(GL_ARRAY_BUFFER, vbo_moon);
+                glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STREAM_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+                glEnableVertexAttribArray(0);
+                glDrawArrays(GL_LINE_LOOP, 0, static_cast<GLsizei>(points.size()));
+            }
+            glUseProgram(planetShader);
         }
 
-        glm::mat4 posMatrix = glm::translate(parentTransform, localPos * visualDistanceScale);
-        
         // Draw Body
         {
-            double scale = body.getRadius();
-            glm::mat4 model = glm::scale(posMatrix, glm::vec3(static_cast<float>(scale) * visualRadiusScale));
-
-            glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-            glUniform1i(m_isSunLoc, isSun ? 1 : 0);
+            float scale = static_cast<float>(body.getRadius()) * visualRadiusScale;
+            glm::mat4 model = glm::scale(posMatrix, glm::vec3(scale));
             
-            glm::vec3 color = body.getColor(); 
-            glUniform3fv(m_colorLoc, 1, glm::value_ptr(color));
-
-            glBindVertexArray(m_vao);
-            glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, 0);
+            float highlight = (hoveredBody == &body) ? 1.0f : 0.0f;
+            glUniform1f(highlightLoc, highlight);
+            
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+            glUniform1i(isSunLoc, isSun ? 1 : 0);
+            glUniform3fv(colorLoc, 1, glm::value_ptr(body.getColor()));
+            m_sphereMesh->draw();
         }
         
-        // Draw Orbits for children
-        for (const auto& child : body.getChildren()) {
-             float orbitRadius = child->getOrbitalParams().semiMajorAxis * visualDistanceScale;
-             
-             glUniform1i(m_isSunLoc, 1); 
-             glUniform3fv(m_colorLoc, 1, glm::value_ptr(glm::vec3(0.2f))); 
-             
-             glm::mat4 orbitModel = glm::scale(posMatrix, glm::vec3(orbitRadius));
-             glUniformMatrix4fv(m_modelLoc, 1, GL_FALSE, glm::value_ptr(orbitModel));
-             
-             glBindVertexArray(m_orbitVao);
-             glDrawArrays(GL_LINE_LOOP, 0, 128);
-        }
-        
-        // Recurse
         for (const auto& child : body.getChildren()) {
             drawBodyRecursive(*child, posMatrix);
         }
     };
-
-    glm::mat4 identity = glm::mat4(1.0f);
-
-    // Draw Sun and Primary Planets (Roots)
+    
     for (const auto& body : bodies) {
-        if (body.get() != solarSystem.getSun()) {
-             float orbitRadius = body->getOrbitalParams().semiMajorAxis * visualDistanceScale;
-             drawOrbit(orbitRadius, glm::vec3(0.2f, 0.2f, 0.2f), view, proj);
+        if (m_showOrbits && body.get() != solarSystem.getSun()) {
+            glUseProgram(orbitShader);
+            GLint oModelLoc = m_shaderManager->getUniformLocation(orbitShader, "model");
+            GLint oViewLoc = m_shaderManager->getUniformLocation(orbitShader, "view");
+            GLint oProjLoc = m_shaderManager->getUniformLocation(orbitShader, "projection");
+            GLint oColorLoc = m_shaderManager->getUniformLocation(orbitShader, "orbitColor");
+            GLint oOpacityLoc = m_shaderManager->getUniformLocation(orbitShader, "opacity");
+            
+            glUniformMatrix4fv(oViewLoc, 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(oProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
+            glUniformMatrix4fv(oModelLoc, 1, GL_FALSE, glm::value_ptr(glm::mat4(1.0f)));
+            glUniform3f(oColorLoc, 0.3f, 0.3f, 0.4f);
+            glUniform1f(oOpacityLoc, 0.3f);
+            
+            // Draw elliptical orbit path
+            const int segments = 256;
+            std::vector<glm::vec3> points;
+            points.reserve(segments);
+            
+            Simulation::OrbitalParams params = body->getOrbitalParams();
+            for (int i = 0; i < segments; ++i) {
+                double meanAnomaly = (static_cast<double>(i) / segments) * 2.0 * glm::pi<double>();
+                Simulation::OrbitalParams p = params;
+                p.meanAnomaly0 = meanAnomaly;
+                points.push_back(Simulation::OrbitModel::calculatePosition(p, 0.0) * visualDistanceScale);
+            }
+            
+            static GLuint vao = 0, vbo = 0;
+            if (vao == 0) {
+                glGenVertexArrays(1, &vao);
+                glGenBuffers(1, &vbo);
+            }
+            glBindVertexArray(vao);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STREAM_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+            glEnableVertexAttribArray(0);
+            glDrawArrays(GL_LINE_LOOP, 0, static_cast<GLsizei>(points.size()));
+            
+            glUseProgram(planetShader);
         }
         
-        drawBodyRecursive(*body, identity);
+        drawBodyRecursive(*body, glm::mat4(1.0f));
     }
     
-    glBindVertexArray(0);
-    
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-    SDL_GL_SwapWindow(m_window.getHandle());
+    glDisable(GL_BLEND);
+    m_uiManager->endFrame();
+    m_window.swapBuffers();
 }
 
 void GLRenderer::resize(int width, int height) {
     glViewport(0, 0, width, height);
+    LOG_DEBUG("GLRenderer", "Viewport resized to ", width, "x", height);
+}
+
+void GLRenderer::processEvent(const SDL_Event& event) {
+    m_uiManager->processEvent(event);
 }
 
 } // namespace Render

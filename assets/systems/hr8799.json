@@ -1,0 +1,79 @@
+{
+  "name": "HR 8799",
+  "scale": {
+    "system": 20.0,
+    "planet": 0.5
+  },
+  "bodies": [
+    {
+      "name": "HR 8799",
+      "radius": 157.0,
+      "color": [0.9, 0.9, 1.0],
+      "orbit": {
+        "semiMajorAxis": 0.0,
+        "eccentricity": 0.0,
+        "inclination": 0.0,
+        "period": 1.0,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "e",
+      "radius": 11.0,
+      "color": [0.8, 0.4, 0.4],
+      "orbit": {
+        "semiMajorAxis": 14.5,
+        "eccentricity": 0.0,
+        "inclination": 25.0,
+        "period": 45.0,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 64.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "d",
+      "radius": 12.0,
+      "color": [0.7, 0.5, 0.5],
+      "orbit": {
+        "semiMajorAxis": 24.0,
+        "eccentricity": 0.1,
+        "inclination": 25.0,
+        "period": 100.0,
+        "meanAnomaly": 90.0,
+        "longitudeAscendingNode": 64.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "c",
+      "radius": 12.0,
+      "color": [0.6, 0.6, 0.5],
+      "orbit": {
+        "semiMajorAxis": 38.0,
+        "eccentricity": 0.0,
+        "inclination": 25.0,
+        "period": 190.0,
+        "meanAnomaly": 180.0,
+        "longitudeAscendingNode": 64.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "b",
+      "radius": 11.0,
+      "color": [0.5, 0.5, 0.7],
+      "orbit": {
+        "semiMajorAxis": 68.0,
+        "eccentricity": 0.0,
+        "inclination": 25.0,
+        "period": 460.0,
+        "meanAnomaly": 270.0,
+        "longitudeAscendingNode": 64.0,
+        "argumentPeriapsis": 0.0
+      }
+    }
+  ]
+}

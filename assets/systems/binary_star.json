@@ -1,0 +1,53 @@
+{
+  "name": "Binary Star",
+  "scale": {
+    "system": 200.0,
+    "planet": 1.0
+  },
+  "bodies": [
+    {
+      "name": "Star Alpha",
+      "radius": 50.0,
+      "color": [1.0, 0.8, 0.2],
+      "mass": 500000.0,
+      "orbit": {
+        "semiMajorAxis": 2.0,
+        "eccentricity": 0.1,
+        "inclination": 0.0,
+        "period": 0.5,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "Star Beta",
+      "radius": 40.0,
+      "color": [1.0, 0.5, 0.1],
+      "mass": 400000.0,
+      "orbit": {
+        "semiMajorAxis": 2.0,
+        "eccentricity": 0.1,
+        "inclination": 0.0,
+        "period": 0.5,
+        "meanAnomaly": 180.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "Circumbinary Planet",
+      "radius": 1.5,
+      "color": [0.4, 0.8, 0.4],
+      "orbit": {
+        "semiMajorAxis": 12.0,
+        "eccentricity": 0.05,
+        "inclination": 5.0,
+        "period": 5.0,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    }
+  ]
+}

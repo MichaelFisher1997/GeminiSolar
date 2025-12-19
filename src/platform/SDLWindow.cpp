@@ -1,8 +1,7 @@
 #include "SDLWindow.hpp"
-#include <SDL3/SDL_vulkan.h>
+#include "core/Logger.hpp"
 #include <stdexcept>
-#include <iostream>
-#include <vulkan/vulkan.h>
+#include <GL/glew.h>
 
 namespace Platform {
 
@@ -11,7 +10,14 @@ SDLWindow::SDLWindow(const std::string& title, int width, int height) {
         throw std::runtime_error("Failed to initialize SDL: " + std::string(SDL_GetError()));
     }
 
-    // Set window flags (OpenGL by default now, was Vulkan)
+    // Set OpenGL attributes before window creation
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
     SDL_WindowFlags window_flags = (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
     m_window = SDL_CreateWindow(
@@ -25,45 +31,126 @@ SDLWindow::SDLWindow(const std::string& title, int width, int height) {
         SDL_Quit();
         throw std::runtime_error("Failed to create SDL window: " + std::string(SDL_GetError()));
     }
+    
+    LOG_INFO("SDLWindow", "Window created: ", width, "x", height);
 }
 
 SDLWindow::~SDLWindow() {
+    if (m_glContext) {
+        SDL_GL_DestroyContext(m_glContext);
+    }
     if (m_window) {
         SDL_DestroyWindow(m_window);
     }
     SDL_Quit();
+    LOG_INFO("SDLWindow", "Window destroyed");
 }
 
-void SDLWindow::pollEvents() {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_EVENT_QUIT) {
-            m_shouldClose = true;
-        }
-        if (event.type == SDL_EVENT_KEY_DOWN) {
-            if (event.key.key == SDLK_ESCAPE) {
-                m_shouldClose = true;
-            }
-        }
-    }
-}
-
-std::vector<const char*> SDLWindow::getVulkanInstanceExtensions() const {
-    Uint32 count = 0;
-    const char* const* extensions = SDL_Vulkan_GetInstanceExtensions(&count);
-    if (!extensions) {
-        throw std::runtime_error("Failed to get SDL Vulkan extensions: " + std::string(SDL_GetError()));
+void SDLWindow::createGLContext() {
+    m_glContext = SDL_GL_CreateContext(m_window);
+    if (!m_glContext) {
+        throw std::runtime_error("Failed to create OpenGL context: " + std::string(SDL_GetError()));
     }
     
-    std::vector<const char*> extVector;
-    for (Uint32 i = 0; i < count; i++) {
-        extVector.push_back(extensions[i]);
+    SDL_GL_MakeCurrent(m_window, m_glContext);
+    
+    // Initialize GLEW
+    glewExperimental = GL_TRUE;
+    GLenum err = glewInit();
+    if (GLEW_OK != err) {
+        throw std::runtime_error("Failed to initialize GLEW: " + std::string((const char*)glewGetErrorString(err)));
     }
-    return extVector;
+    
+    // Enable VSync
+    SDL_GL_SetSwapInterval(1);
+    
+    LOG_INFO("SDLWindow", "OpenGL context created - Version: ", (const char*)glGetString(GL_VERSION));
 }
 
-bool SDLWindow::createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface) const {
-    return SDL_Vulkan_CreateSurface(m_window, instance, nullptr, surface);
+void SDLWindow::getSize(int& width, int& height) const {
+    SDL_GetWindowSize(m_window, &width, &height);
+}
+
+void SDLWindow::setTitle(const std::string& title) {
+    SDL_SetWindowTitle(m_window, title.c_str());
+}
+
+void SDLWindow::swapBuffers() {
+    SDL_GL_SwapWindow(m_window);
+}
+
+void SDLWindow::makeContextCurrent() {
+    SDL_GL_MakeCurrent(m_window, m_glContext);
+}
+
+void SDLWindow::pollEvents(EventCallback callback) {
+    SDL_Event sdlEvent;
+    while (SDL_PollEvent(&sdlEvent)) {
+        // Forward raw event to ImGui if callback is set
+        if (m_rawEventCallback) {
+            m_rawEventCallback(sdlEvent);
+        }
+        
+        WindowEvent event;
+        
+        switch (sdlEvent.type) {
+            case SDL_EVENT_QUIT:
+                event.type = WindowEventType::Quit;
+                m_shouldClose = true;
+                callback(event);
+                break;
+                
+            case SDL_EVENT_WINDOW_RESIZED:
+                event.type = WindowEventType::Resized;
+                event.width = sdlEvent.window.data1;
+                event.height = sdlEvent.window.data2;
+                callback(event);
+                break;
+                
+            case SDL_EVENT_KEY_DOWN:
+                event.type = WindowEventType::KeyDown;
+                event.keyCode = sdlEvent.key.key;
+                event.scanCode = sdlEvent.key.scancode;
+                callback(event);
+                break;
+                
+            case SDL_EVENT_KEY_UP:
+                event.type = WindowEventType::KeyUp;
+                event.keyCode = sdlEvent.key.key;
+                event.scanCode = sdlEvent.key.scancode;
+                callback(event);
+                break;
+                
+            case SDL_EVENT_MOUSE_MOTION:
+                event.type = WindowEventType::MouseMotion;
+                event.mouseX = sdlEvent.motion.x;
+                event.mouseY = sdlEvent.motion.y;
+                callback(event);
+                break;
+                
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                event.type = WindowEventType::MouseButtonDown;
+                event.mouseButton = sdlEvent.button.button;
+                event.mouseX = sdlEvent.button.x;
+                event.mouseY = sdlEvent.button.y;
+                callback(event);
+                break;
+                
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                event.type = WindowEventType::MouseButtonUp;
+                event.mouseButton = sdlEvent.button.button;
+                event.mouseX = sdlEvent.button.x;
+                event.mouseY = sdlEvent.button.y;
+                callback(event);
+                break;
+                
+            case SDL_EVENT_MOUSE_WHEEL:
+                event.type = WindowEventType::MouseWheel;
+                event.wheelDelta = sdlEvent.wheel.y;
+                callback(event);
+                break;
+        }
+    }
 }
 
 } // namespace Platform

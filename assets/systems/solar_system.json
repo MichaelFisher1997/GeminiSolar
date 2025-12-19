@@ -1,0 +1,287 @@
+{
+  "name": "Solar System",
+  "scale": {
+    "system": 1000.0,
+    "planet": 0.05
+  },
+  "bodies": [
+    {
+      "name": "Sun",
+      "radius": 109.12,
+      "color": [1.0, 1.0, 0.0],
+      "orbit": {
+        "semiMajorAxis": 0.0,
+        "eccentricity": 0.0,
+        "inclination": 0.0,
+        "period": 1.0,
+        "meanAnomaly": 0.0,
+        "longitudeAscendingNode": 0.0,
+        "argumentPeriapsis": 0.0
+      }
+    },
+    {
+      "name": "Mercury",
+      "radius": 0.383,
+      "color": [0.7, 0.7, 0.7],
+      "orbit": {
+        "semiMajorAxis": 0.387098,
+        "eccentricity": 0.205630,
+        "inclination": 7.005,
+        "period": 0.240846,
+        "meanAnomaly": 174.796,
+        "longitudeAscendingNode": 48.331,
+        "argumentPeriapsis": 29.124
+      }
+    },
+    {
+      "name": "Venus",
+      "radius": 0.949,
+      "color": [0.9, 0.8, 0.5],
+      "orbit": {
+        "semiMajorAxis": 0.723332,
+        "eccentricity": 0.006773,
+        "inclination": 3.3947,
+        "period": 0.615197,
+        "meanAnomaly": 50.115,
+        "longitudeAscendingNode": 76.680,
+        "argumentPeriapsis": 54.884
+      }
+    },
+    {
+      "name": "Earth",
+      "radius": 1.0,
+      "color": [0.2, 0.4, 0.9],
+      "orbit": {
+        "semiMajorAxis": 1.000000,
+        "eccentricity": 0.016708,
+        "inclination": 0.000,
+        "period": 1.000017,
+        "meanAnomaly": 357.517,
+        "longitudeAscendingNode": -11.2606,
+        "argumentPeriapsis": 102.947
+      },
+      "children": [
+        {
+          "name": "Moon",
+          "radius": 0.273,
+          "color": [0.6, 0.6, 0.6],
+          "orbit": {
+            "semiMajorAxis": 0.00257,
+            "eccentricity": 0.0549,
+            "inclination": 5.145,
+            "period": 0.0748,
+            "meanAnomaly": 135.27,
+            "longitudeAscendingNode": 125.08,
+            "argumentPeriapsis": 318.15
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mars",
+      "radius": 0.532,
+      "color": [0.8, 0.4, 0.3],
+      "orbit": {
+        "semiMajorAxis": 1.523662,
+        "eccentricity": 0.093412,
+        "inclination": 1.850,
+        "period": 1.880847,
+        "meanAnomaly": 19.412,
+        "longitudeAscendingNode": 49.578,
+        "argumentPeriapsis": 286.502
+      },
+      "children": [
+        {
+          "name": "Phobos",
+          "radius": 0.15,
+          "color": [0.5, 0.4, 0.4],
+          "orbit": {
+            "semiMajorAxis": 0.000062,
+            "eccentricity": 0.0151,
+            "inclination": 1.093,
+            "period": 0.0008,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        },
+        {
+          "name": "Deimos",
+          "radius": 0.12,
+          "color": [0.6, 0.5, 0.5],
+          "orbit": {
+            "semiMajorAxis": 0.000156,
+            "eccentricity": 0.0002,
+            "inclination": 0.93,
+            "period": 0.003,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Jupiter",
+      "radius": 11.21,
+      "color": [0.8, 0.7, 0.6],
+      "orbit": {
+        "semiMajorAxis": 5.203363,
+        "eccentricity": 0.048392,
+        "inclination": 1.305,
+        "period": 11.862615,
+        "meanAnomaly": 20.02,
+        "longitudeAscendingNode": 100.556,
+        "argumentPeriapsis": 273.867
+      },
+      "children": [
+        {
+          "name": "Io",
+          "radius": 0.28,
+          "color": [0.8, 0.8, 0.4],
+          "orbit": {
+            "semiMajorAxis": 0.00282,
+            "eccentricity": 0.0041,
+            "inclination": 0.05,
+            "period": 0.0048,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        },
+        {
+          "name": "Europa",
+          "radius": 0.24,
+          "color": [0.7, 0.7, 0.7],
+          "orbit": {
+            "semiMajorAxis": 0.00448,
+            "eccentricity": 0.009,
+            "inclination": 0.47,
+            "period": 0.0097,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        },
+        {
+          "name": "Ganymede",
+          "radius": 0.41,
+          "color": [0.6, 0.6, 0.6],
+          "orbit": {
+            "semiMajorAxis": 0.00715,
+            "eccentricity": 0.0013,
+            "inclination": 0.2,
+            "period": 0.0196,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        },
+        {
+          "name": "Callisto",
+          "radius": 0.37,
+          "color": [0.5, 0.5, 0.5],
+          "orbit": {
+            "semiMajorAxis": 0.01258,
+            "eccentricity": 0.0074,
+            "inclination": 0.19,
+            "period": 0.0457,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Saturn",
+      "radius": 9.45,
+      "color": [0.9, 0.8, 0.6],
+      "orbit": {
+        "semiMajorAxis": 9.537070,
+        "eccentricity": 0.054150,
+        "inclination": 2.484,
+        "period": 29.447498,
+        "meanAnomaly": 317.02,
+        "longitudeAscendingNode": 113.715,
+        "argumentPeriapsis": 339.392
+      },
+      "children": [
+        {
+          "name": "Titan",
+          "radius": 0.40,
+          "color": [0.8, 0.6, 0.2],
+          "orbit": {
+            "semiMajorAxis": 0.00817,
+            "eccentricity": 0.028,
+            "inclination": 0.33,
+            "period": 0.0437,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Uranus",
+      "radius": 4.01,
+      "color": [0.6, 0.8, 0.9],
+      "orbit": {
+        "semiMajorAxis": 19.191263,
+        "eccentricity": 0.047167,
+        "inclination": 0.769,
+        "period": 84.016846,
+        "meanAnomaly": 142.59,
+        "longitudeAscendingNode": 74.00,
+        "argumentPeriapsis": 96.66
+      },
+      "children": [
+        {
+          "name": "Titania",
+          "radius": 0.12,
+          "color": [0.7, 0.7, 0.7],
+          "orbit": {
+            "semiMajorAxis": 0.00291,
+            "eccentricity": 0.0011,
+            "inclination": 0.34,
+            "period": 0.0238,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "Neptune",
+      "radius": 3.88,
+      "color": [0.3, 0.3, 0.8],
+      "orbit": {
+        "semiMajorAxis": 30.068963,
+        "eccentricity": 0.008585,
+        "inclination": 1.769,
+        "period": 164.79132,
+        "meanAnomaly": 260.25,
+        "longitudeAscendingNode": 131.78,
+        "argumentPeriapsis": 272.85
+      },
+      "children": [
+        {
+          "name": "Triton",
+          "radius": 0.21,
+          "color": [0.7, 0.6, 0.8],
+          "orbit": {
+            "semiMajorAxis": 0.00237,
+            "eccentricity": 0.0,
+            "inclination": 157.0,
+            "period": 0.016,
+            "meanAnomaly": 0.0,
+            "longitudeAscendingNode": 0.0,
+            "argumentPeriapsis": 0.0
+          }
+        }
+      ]
+    }
+  ]
+}
