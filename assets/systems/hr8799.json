@@ -7,6 +7,7 @@
   "bodies": [
     {
       "name": "HR 8799",
+      "type": "star",
       "radius": 157.0,
       "color": [0.9, 0.9, 1.0],
       "orbit": {

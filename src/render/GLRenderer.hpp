@@ -36,6 +36,16 @@ private:
     void initGL();
     void loadShaders();
     void createMeshes();
+    
+    /// Draw an orbit path for a body
+    void drawOrbit(const Simulation::CelestialBody& body, 
+                   const glm::mat4& parentTransform,
+                   const glm::mat4& view, 
+                   const glm::mat4& proj,
+                   float visualDistanceScale,
+                   const glm::vec3& color,
+                   float opacity,
+                   int segments);
 
     Platform::SDLWindow& m_window;
     

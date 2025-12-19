@@ -9,7 +9,24 @@ namespace Simulation {
 
 using json = nlohmann::json;
 
-std::unique_ptr<CelestialBody> parseBody(const json& bodyJson) {
+// Helper function to parse BodyType from string
+BodyType parseBodyType(const std::string& typeStr) {
+    static const std::unordered_map<std::string, BodyType> typeMap = {
+        {"star", BodyType::Star},
+        {"planet", BodyType::Planet},
+        {"moon", BodyType::Moon},
+        {"dwarf_planet", BodyType::DwarfPlanet},
+        {"asteroid", BodyType::Asteroid},
+        {"comet", BodyType::Comet},
+        {"black_hole", BodyType::BlackHole},
+        {"other", BodyType::Other}
+    };
+    
+    auto it = typeMap.find(typeStr);
+    return (it != typeMap.end()) ? it->second : BodyType::Planet;
+}
+
+std::unique_ptr<CelestialBody> parseBody(const json& bodyJson, bool isChild = false) {
     std::string name = bodyJson.at("name").get<std::string>();
     double radius = bodyJson.at("radius").get<double>();
     
@@ -31,7 +48,15 @@ std::unique_ptr<CelestialBody> parseBody(const json& bodyJson) {
         glm::radians(orbitJson.at("argumentPeriapsis").get<double>())
     };
     
-    auto body = std::make_unique<CelestialBody>(name, radius, color, orbit);
+    // Determine body type
+    BodyType bodyType = BodyType::Planet;
+    if (bodyJson.contains("type")) {
+        bodyType = parseBodyType(bodyJson.at("type").get<std::string>());
+    } else if (isChild) {
+        bodyType = BodyType::Moon;  // Default children to moons
+    }
+    
+    auto body = std::make_unique<CelestialBody>(name, radius, color, orbit, bodyType);
     
     // Parse mass if provided, else estimate from radius
     if (bodyJson.contains("mass")) {
@@ -43,7 +68,7 @@ std::unique_ptr<CelestialBody> parseBody(const json& bodyJson) {
     // Parse children (moons)
     if (bodyJson.contains("children")) {
         for (const auto& childJson : bodyJson.at("children")) {
-            body->addChild(parseBody(childJson));
+            body->addChild(parseBody(childJson, true));
         }
     }
     

@@ -6,11 +6,13 @@ namespace Simulation {
 CelestialBody::CelestialBody(const std::string& name, 
                              double radius, 
                              const glm::vec3& color, 
-                             const OrbitalParams& orbitalParams)
+                             const OrbitalParams& orbitalParams,
+                             BodyType type)
     : m_name(name)
     , m_radius(radius)
     , m_color(color)
-    , m_orbitalParams(orbitalParams) {
+    , m_orbitalParams(orbitalParams)
+    , m_type(type) {
 }
 
 glm::vec3 CelestialBody::getPosition(double time) const {

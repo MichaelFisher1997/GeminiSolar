@@ -7,6 +7,7 @@
   "bodies": [
     {
       "name": "TRAPPIST-1",
+      "type": "star",
       "radius": 12.7,
       "color": [1.0, 0.4, 0.2],
       "orbit": {

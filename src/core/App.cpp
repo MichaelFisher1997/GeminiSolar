@@ -33,6 +33,9 @@ App::App() {
     // Create input manager
     m_inputManager = std::make_unique<InputManager>();
     
+    // Create body picker (SRP - extracted from App)
+    m_bodyPicker = std::make_unique<BodyPicker>(*m_window);
+    
     // Get initial window size
     int width, height;
     m_window->getSize(width, height);
@@ -42,6 +45,9 @@ App::App() {
     
     // Create renderer
     m_renderer = std::make_unique<Render::GLRenderer>(*m_window);
+    
+    // Create simulation UI (SRP - extracted from App)
+    m_simulationUI = std::make_unique<Render::SimulationUI>(*m_window);
     
     // Set up raw event forwarding to ImGui
     m_window->setRawEventCallback([this](const SDL_Event& event) {
@@ -73,8 +79,10 @@ void App::shutdown() {
     // Explicit cleanup in reverse order of creation
     m_lockedBody = nullptr;
     m_solarSystem.reset();
+    m_simulationUI.reset();
     m_renderer.reset();
     m_camera.reset();
+    m_bodyPicker.reset();
     m_time.reset();
     m_inputManager.reset();
     // Window is destroyed last (destructor handles it)
@@ -156,20 +164,19 @@ void App::processInput(float deltaTime) {
         }
     }
     
-    // Handle picking on click
+    // Handle picking on click - using BodyPicker (SRP)
     if (!m_inputManager->uiWantsMouse() && m_inputManager->wasActionTriggered("left_click")) {
         float mx, my;
         m_inputManager->getMousePosition(mx, my);
-        const Simulation::CelestialBody* clicked = pickBody(mx, my);
+        const Simulation::CelestialBody* clicked = m_bodyPicker->pickBody(
+            mx, my, *m_solarSystem, *m_camera, 
+            m_time->getSimulationTime(), m_simulationUI->isShowLabels()
+        );
         
         float currentTime = static_cast<float>(SDL_GetTicks()) / 1000.0f;
         if (clicked && (currentTime - m_clickTime) < DOUBLE_CLICK_TIME && clicked == m_selectedBody) {
             // Double click - Focus
-            m_lockedBody = clicked;
-            float bodyRadius = static_cast<float>(clicked->getRadius()) * m_solarSystem->getPlanetScale();
-            float orbitDist = std::max(bodyRadius * 5.0f, 2.0f);
-            glm::vec3 worldPos = clicked->getWorldPosition(m_time->getSimulationTime()) * m_solarSystem->getSystemScale();
-            m_camera->transitionToTarget(worldPos, orbitDist, 0.8f);
+            handleBodySelection(clicked);
         } else {
             // Single click - Select
             m_selectedBody = clicked;
@@ -266,8 +273,45 @@ void App::update(float deltaTime) {
 }
 
 void App::render() {
+    // Sync render options from SimulationUI to GLRenderer
+    m_renderer->setShowOrbits(m_simulationUI->isShowOrbits());
+    m_renderer->setShowLabels(m_simulationUI->isShowLabels());
+    
     m_renderer->render(*m_solarSystem, *m_camera, m_time->getSimulationTime(), m_hoveredBody, [this]() {
-        renderUI();
+        // Set up callbacks for UI actions
+        Render::UICallbacks callbacks;
+        callbacks.onSystemSelected = [this](const std::string& name) {
+            handleSystemChange(name);
+        };
+        callbacks.onBodySelected = [this](const Simulation::CelestialBody* body) {
+            handleBodySelection(body);
+        };
+        callbacks.onClearFocus = [this]() {
+            m_lockedBody = nullptr;
+        };
+        
+        // Render main UI panels (SRP - delegated to SimulationUI)
+        m_simulationUI->render(
+            *m_solarSystem, *m_time, *m_camera,
+            m_hoveredBody, m_selectedBody, m_lockedBody,
+            callbacks
+        );
+        
+        // Render planet labels
+        m_simulationUI->renderLabels(
+            *m_solarSystem, *m_camera, m_time->getSimulationTime(),
+            m_hoveredBody, m_selectedBody, m_lockedBody,
+            m_simulationUI->isShowLabels()
+        );
+        
+        // Render body tooltip
+        float mx, my;
+        m_inputManager->getMousePosition(mx, my);
+        const Simulation::CelestialBody* infoBody = m_hoveredBody ? m_hoveredBody : m_selectedBody;
+        m_simulationUI->renderBodyTooltip(
+            infoBody, m_hoveredBody, m_selectedBody,
+            mx, my, m_inputManager->uiWantsMouse()
+        );
     });
 }
 
@@ -279,300 +323,39 @@ void App::updateHover() {
     
     float mx, my;
     m_inputManager->getMousePosition(mx, my);
-    m_hoveredBody = pickBody(mx, my);
+    m_hoveredBody = m_bodyPicker->pickBody(
+        mx, my, *m_solarSystem, *m_camera,
+        m_time->getSimulationTime(), m_simulationUI->isShowLabels()
+    );
 }
 
-const Simulation::CelestialBody* App::pickBody(float mouseX, float mouseY) {
-    int w, h;
-    m_window->getSize(w, h);
-    float sw = static_cast<float>(w);
-    float sh = static_cast<float>(h);
+void App::handleBodySelection(const Simulation::CelestialBody* body) {
+    if (!body) return;
     
-    glm::vec3 rayDir = m_camera->getRayDirection(mouseX, mouseY, sw, sh);
-    glm::vec3 rayOrigin = m_camera->getPosition();
+    m_lockedBody = body;
+    float bodyRadius = static_cast<float>(body->getRadius()) * m_solarSystem->getPlanetScale();
+    float orbitDist = std::max(bodyRadius * 5.0f, 2.0f);
     
-    const Simulation::CelestialBody* bestBody = nullptr;
-    float minDist = 1e10f;
-    
-    float sysScale = m_solarSystem->getSystemScale();
-    float planetScale = m_solarSystem->getPlanetScale();
-    double time = m_time->getSimulationTime();
-    
-    glm::mat4 viewProj = m_camera->getProjectionMatrix() * m_camera->getViewMatrix();
-    
-    std::function<void(const Simulation::CelestialBody&, glm::vec3)> checkBody;
-    checkBody = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
-        glm::vec3 worldPos;
-        if (m_solarSystem->isPhysicsEnabled()) {
-            worldPos = body.getPhysicsPosition() * sysScale;
-        } else {
-            worldPos = parentPos + body.getPosition(time) * sysScale;
-        }
-        
-        float radius = static_cast<float>(body.getRadius());
-        if (body.getName() == "Sun" || body.getName() == "Kepler-90" || body.getName() == "TRAPPIST-1" || body.getName() == "Singularity") {
-            radius = 1.5f; 
-        } else {
-            radius *= planetScale;
-        }
-        
-        float clickRadius = std::max(radius, 0.15f); 
-        glm::vec3 L = worldPos - rayOrigin;
-        float tca = glm::dot(L, rayDir);
-        if (tca >= 0) {
-            float d2 = glm::dot(L, L) - tca * tca;
-            if (d2 <= clickRadius * clickRadius) {
-                float t0 = tca - sqrt(clickRadius * clickRadius - d2);
-                if (t0 < minDist) {
-                    minDist = t0;
-                    bestBody = &body;
-                }
-            }
-        }
-        
-        if (m_renderer->isShowLabels()) {
-            glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
-            if (clipPos.z > 0 && clipPos.w > 0) {
-                glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
-                float sx = (ndc.x + 1.0f) * 0.5f * sw;
-                float sy = (1.0f - ndc.y) * 0.5f * sh;
-                
-                float dx = mouseX - sx;
-                float dy = mouseY - sy;
-                if (dx*dx + dy*dy < 900.0f) { // 30px radius
-                    if (minDist > 100.0f) { 
-                        minDist = 0.0f; 
-                        bestBody = &body;
-                    }
-                }
-            }
-        }
-        
-        for (const auto& child : body.getChildren()) {
-            checkBody(*child, worldPos);
-        }
-    };
-    
-    for (const auto& body : m_solarSystem->getBodies()) {
-        checkBody(*body, glm::vec3(0.0f));
+    glm::vec3 worldPos;
+    if (m_solarSystem->isPhysicsEnabled()) {
+        worldPos = body->getPhysicsPosition();
+    } else {
+        worldPos = body->getWorldPosition(m_time->getSimulationTime());
     }
+    worldPos *= m_solarSystem->getSystemScale();
     
-    return bestBody;
+    m_camera->transitionToTarget(worldPos, orbitDist, 0.8f);
 }
 
-void App::renderUI() {
-    // 1. Stats Overlay
-    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.35f);
-    if (ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove)) {
-        ImGui::TextColored(ImVec4(0.0f, 1.0f, 1.0f, 1.0f), "Solar System Simulator");
-        ImGui::Separator();
-        ImGui::Text("Time: %.2f years", m_time->getSimulationTime());
-        ImGui::Text("FPS:  %.0f", ImGui::GetIO().Framerate);
-        if (m_time->isPaused()) {
-            ImGui::SameLine();
-            ImGui::TextColored(ImVec4(1, 0, 0, 1), "[PAUSED]");
-        }
-    }
-    ImGui::End();
-
-    // 2. Control Panel
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, 10), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_Always);
-    if (ImGui::Begin("Simulation Controls", nullptr)) {
-        if (ImGui::CollapsingHeader("System Selection", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const std::vector<std::string> planetSystems = { "Solar System", "TRAPPIST-1", "Kepler-90", "Kepler-11", "55 Cancri", "HR 8799" };
-            const std::vector<std::string> specialEvents = { "Black Hole", "Binary Star" };
-
-            ImGui::TextDisabled("Planetary Systems");
-            ImGui::PushID("Planets");
-            for (const auto& name : planetSystems) {
-                bool isSelected = (m_solarSystem->getCurrentSystemName() == name);
-                if (ImGui::Selectable(name.c_str(), isSelected)) {
-                    m_solarSystem->loadSystem(name);
-                    m_lockedBody = nullptr;
-                    m_selectedBody = nullptr;
-                    m_hoveredBody = nullptr;
-                    m_camera->transitionToTarget(glm::vec3(0.0f), 30.0f, 0.5f);
-                }
-            }
-            ImGui::PopID();
-
-            ImGui::Separator();
-            ImGui::TextDisabled("Special Events");
-            ImGui::PushID("Events");
-            for (const auto& name : specialEvents) {
-                bool isSelected = (m_solarSystem->getCurrentSystemName() == name);
-                if (ImGui::Selectable(name.c_str(), isSelected)) {
-                    m_solarSystem->loadSystem(name);
-                    m_lockedBody = nullptr;
-                    m_selectedBody = nullptr;
-                    m_hoveredBody = nullptr;
-                    m_camera->transitionToTarget(glm::vec3(0.0f), 40.0f, 0.8f);
-                }
-            }
-            ImGui::PopID();
-        }
-
-        if (ImGui::CollapsingHeader("Time Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const double DAY_IN_YEARS = 1.0 / 365.25;
-            float multiplier = static_cast<float>(m_time->getTimeScale() / DAY_IN_YEARS);
-            if (ImGui::SliderFloat("Speed (Days/s)", &multiplier, 0.0f, 400.0f, "%.4f", ImGuiSliderFlags_Logarithmic)) {
-                m_time->setTimeScale(static_cast<double>(multiplier) * DAY_IN_YEARS);
-            }
-            if (ImGui::Button(m_time->isPaused() ? "Resume (P)" : "Pause (P)", ImVec2(-1, 0))) {
-                m_time->setPaused(!m_time->isPaused());
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Visual Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-            bool showOrbits = m_renderer->isShowOrbits();
-            if (ImGui::Checkbox("Show Orbital Rings", &showOrbits)) m_renderer->setShowOrbits(showOrbits);
-            
-            bool showLabels = m_renderer->isShowLabels();
-            if (ImGui::Checkbox("Show Planet Labels", &showLabels)) m_renderer->setShowLabels(showLabels);
-
-            bool physicsEnabled = m_solarSystem->isPhysicsEnabled();
-            if (ImGui::Checkbox("N-Body Gravity (Chaos)", &physicsEnabled)) m_solarSystem->setPhysicsEnabled(physicsEnabled);
-        }
-
-        if (m_solarSystem->getCurrentSystemName() == "Solar System") {
-            if (ImGui::CollapsingHeader("Historic Presets")) {
-                auto eventBtn = [this](const char* label, double time) {
-                    if (ImGui::Button(label, ImVec2(-1, 0))) {
-                        m_time->setSimulationTime(time);
-                        m_time->setPaused(true);
-                        m_lockedBody = nullptr;
-                    }
-                };
-                eventBtn("Great Conjunction (2020)", 20.972);
-                eventBtn("Total Solar Eclipse (2017)", 17.638);
-                eventBtn("Venus Transit (2012)", 12.427);
-                eventBtn("Shoemaker-Levy 9 (1994)", -5.460);
-                eventBtn("Voyager 2 Neptune (1989)", -10.353);
-            }
-        }
-    }
-    ImGui::End();
-
-    // 3. Celestial Bodies Panel
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 310, ImGui::GetIO().DisplaySize.y - 260), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(300, 250), ImGuiCond_Always);
-    if (ImGui::Begin("Celestial Bodies", nullptr)) {
-        if (ImGui::Button("Clear Focus", ImVec2(-1, 0))) m_lockedBody = nullptr;
-        ImGui::Separator();
-        ImGui::BeginChild("BodyList");
-        
-        const auto* sun = m_solarSystem->getSun();
-        if (sun) {
-            bool isSelected = (m_lockedBody == sun);
-            if (ImGui::Selectable(sun->getName().c_str(), isSelected)) {
-                m_lockedBody = sun;
-                m_camera->transitionToTarget(glm::vec3(0.0f), 25.0f, 0.8f);
-            }
-        }
-
-        auto& bodies = m_solarSystem->getBodies();
-        float systemScale = m_solarSystem->getSystemScale();
-        float planetScale = m_solarSystem->getPlanetScale();
-        for (size_t i = 1; i < bodies.size(); ++i) {
-            const auto& body = bodies[i];
-            ImGui::PushID(body.get());
-            bool isSelected = (m_lockedBody == body.get());
-            if (ImGui::Selectable(body->getName().c_str(), isSelected)) {
-                m_lockedBody = body.get();
-                glm::vec3 worldPos = (m_solarSystem->isPhysicsEnabled() ? body->getPhysicsPosition() : body->getWorldPosition(m_time->getSimulationTime())) * systemScale;
-                m_camera->transitionToTarget(worldPos, std::max(static_cast<float>(body->getRadius()) * planetScale * 5.0f, 2.0f), 0.8f);
-            }
-            for (const auto& child : body->getChildren()) {
-                ImGui::PushID(child.get());
-                bool childSelected = (m_lockedBody == child.get());
-                if (ImGui::Selectable(("  > " + child->getName()).c_str(), childSelected)) {
-                    m_lockedBody = child.get();
-                    glm::vec3 worldPos = (m_solarSystem->isPhysicsEnabled() ? child->getPhysicsPosition() : child->getWorldPosition(m_time->getSimulationTime())) * systemScale;
-                    m_camera->transitionToTarget(worldPos, std::max(static_cast<float>(child->getRadius()) * planetScale * 6.0f, 1.2f), 0.8f);
-                }
-                ImGui::PopID();
-            }
-            ImGui::PopID();
-        }
-        ImGui::EndChild();
-    }
-    ImGui::End();
-
-    // Planet Labels (Background)
-    if (m_renderer->isShowLabels()) {
-        int w, h; m_window->getSize(w, h);
-        float sw = static_cast<float>(w), sh = static_cast<float>(h);
-        glm::mat4 viewProj = m_camera->getProjectionMatrix() * m_camera->getViewMatrix();
-        float sysScale = m_solarSystem->getSystemScale();
-        double time = m_time->getSimulationTime();
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-        
-        std::function<void(const Simulation::CelestialBody&, glm::vec3)> drawLabel;
-        drawLabel = [&](const Simulation::CelestialBody& body, glm::vec3 parentPos) {
-            glm::vec3 worldPos = m_solarSystem->isPhysicsEnabled() ? (body.getPhysicsPosition() * sysScale) : ((parentPos / sysScale + body.getPosition(time)) * sysScale);
-            glm::vec4 clipPos = viewProj * glm::vec4(worldPos, 1.0f);
-            bool isMoon = body.getParent() != nullptr;
-            bool shouldShow = !isMoon || (body.getParent() == m_lockedBody || &body == m_lockedBody);
-            if (clipPos.z > 0 && clipPos.w > 0 && shouldShow) {
-                glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
-                float sx = (ndc.x + 1.0f) * 0.5f * sw, sy = (1.0f - ndc.y) * 0.5f * sh;
-                ImU32 col = (m_hoveredBody == &body || m_selectedBody == &body) ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 150);
-                drawList->AddText(ImVec2(sx + 10, sy - 10), col, body.getName().c_str());
-            }
-            for (const auto& child : body.getChildren()) drawLabel(*child, worldPos);
-        };
-        for (const auto& body : m_solarSystem->getBodies()) drawLabel(*body, glm::vec3(0.0f));
-    }
-
-    // Info Tooltip
-    const Simulation::CelestialBody* infoBody = m_hoveredBody ? m_hoveredBody : m_selectedBody;
-    if (infoBody && !m_inputManager->uiWantsMouse()) {
-        ImGui::SetNextWindowBgAlpha(0.85f);
-        if (m_hoveredBody) {
-            float mx, my; m_inputManager->getMousePosition(mx, my);
-            ImGui::SetNextWindowPos(ImVec2(mx + 20, my + 20), ImGuiCond_Always);
-        } else ImGui::SetNextWindowPos(ImVec2(10, 100), ImGuiCond_FirstUseEver);
-        
-        ImGui::Begin("Body Info", nullptr, ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar);
-        ImGui::TextColored(ImVec4(0.4, 0.8, 1.0, 1.0), "%s", infoBody->getName().c_str());
-        ImGui::Separator();
-        if (infoBody->getName() == "Sun" || infoBody->getName() == "Copernicus" || infoBody->getName() == "Singularity") {
-            ImGui::Text("Type: Star / Singularity");
-            ImGui::Text("Radius: %.1f Earth Units", infoBody->getRadius());
-        } else {
-            ImGui::Text("Type: Planet/Moon");
-            const auto& op = infoBody->getOrbitalParams();
-            ImGui::Text("Distance: %.3f AU", op.semiMajorAxis);
-            ImGui::Text("Period: %.3f Years", op.orbitalPeriod);
-        }
-        if (m_hoveredBody && m_hoveredBody != m_selectedBody) ImGui::TextColored(ImVec4(0.7, 0.7, 0.7, 1.0), "(Click to select)");
-        else if (infoBody == m_selectedBody) ImGui::TextColored(ImVec4(0.7, 0.7, 1.0, 1.0), "(Double-click to focus)");
-        ImGui::End();
-    }
-
-    // Help Button
-    static bool showHelp = false;
-    ImGui::SetNextWindowPos(ImVec2(10, ImGui::GetIO().DisplaySize.y - 40), ImGuiCond_Always);
-    if (ImGui::Begin("HelpToggle", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground)) {
-        if (ImGui::Button("? Controls Help")) showHelp = !showHelp;
-    }
-    ImGui::End();
-    if (showHelp) {
-        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-        if (ImGui::Begin("Controls Help", &showHelp, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::BulletText("Right-Click + Drag: Rotate");
-            ImGui::BulletText("Scroll Wheel: Zoom");
-            ImGui::BulletText("Middle-Click: Pan");
-            ImGui::Separator();
-            ImGui::BulletText("Tab: Camera Mode");
-            ImGui::BulletText("Double-Click Planet: Focus");
-            ImGui::BulletText("P: Pause | O: Reset View");
-            if (ImGui::Button("Close", ImVec2(-1, 0))) showHelp = false;
-        }
-        ImGui::End();
-    }
+void App::handleSystemChange(const std::string& systemName) {
+    m_solarSystem->loadSystem(systemName);
+    m_lockedBody = nullptr;
+    m_selectedBody = nullptr;
+    m_hoveredBody = nullptr;
+    
+    // Use different zoom for special events
+    float distance = (systemName == "Black Hole" || systemName == "Binary Star") ? 40.0f : 30.0f;
+    m_camera->transitionToTarget(glm::vec3(0.0f), distance, 0.5f);
 }
 
 } // namespace Core

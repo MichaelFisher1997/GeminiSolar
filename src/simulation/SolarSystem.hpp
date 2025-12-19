@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include "CelestialBody.hpp"
+#include "PhysicsSimulator.hpp"
 
 namespace Simulation {
 
@@ -15,13 +16,16 @@ public:
     void loadSystem(const std::string& systemName);
 
     const std::vector<std::unique_ptr<CelestialBody>>& getBodies() const { return m_bodies; }
+    // Non-const access for physics updates
+    std::vector<std::unique_ptr<CelestialBody>>& getBodies() { return m_bodies; }
+    
     const CelestialBody* getSun() const; // Returns the central star
     
     const std::string& getCurrentSystemName() const { return m_currentSystemName; }
     float getSystemScale() const { return m_systemScale; } 
     float getPlanetScale() const { return m_planetScale; }
 
-    // Physics
+    // Physics - now delegated to PhysicsSimulator (SRP)
     void setPhysicsEnabled(bool enabled);
     bool isPhysicsEnabled() const { return m_physicsEnabled; }
     void updatePhysics(double dt);
@@ -29,15 +33,15 @@ public:
 
 private:
     void loadFallbackSolarSystem();
-    void computeGravity();
     
     std::vector<std::unique_ptr<CelestialBody>> m_bodies;
     std::string m_currentSystemName;
     float m_systemScale = 10.0f; 
     float m_planetScale = 1.0f; 
     
+    // Physics simulation (SRP - extracted into separate class)
     bool m_physicsEnabled = false;
-    double m_gravityConstant = 0.0001; // Tuned for the visual scale
+    std::unique_ptr<PhysicsSimulator> m_physicsSimulator;
 };
 
 } // namespace Simulation

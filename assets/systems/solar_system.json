@@ -7,6 +7,7 @@
   "bodies": [
     {
       "name": "Sun",
+      "type": "star",
       "radius": 109.12,
       "color": [1.0, 1.0, 0.0],
       "orbit": {

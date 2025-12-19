@@ -7,6 +7,18 @@
 
 namespace Simulation {
 
+/// Type of celestial body for proper type-based behavior
+enum class BodyType {
+    Star,       // Central star (Sun, etc.)
+    Planet,     // Major planet
+    Moon,       // Natural satellite
+    DwarfPlanet,
+    Asteroid,
+    Comet,
+    BlackHole,  // Special case for singularities
+    Other
+};
+
 struct OrbitalParams {
     double semiMajorAxis;  // AU
     double eccentricity;   // 0..1
@@ -22,7 +34,8 @@ public:
     CelestialBody(const std::string& name, 
                   double radius, 
                   const glm::vec3& color, 
-                  const OrbitalParams& orbitalParams);
+                  const OrbitalParams& orbitalParams,
+                  BodyType type = BodyType::Planet);
 
     glm::vec3 getPosition(double time) const;
 
@@ -30,6 +43,11 @@ public:
     double getRadius() const { return m_radius; }
     const glm::vec3& getColor() const { return m_color; }
     const OrbitalParams& getOrbitalParams() const { return m_orbitalParams; }
+    
+    // Body type methods
+    BodyType getType() const { return m_type; }
+    void setType(BodyType type) { m_type = type; }
+    bool isStar() const { return m_type == BodyType::Star || m_type == BodyType::BlackHole; }
     
     // Physics State
     void setPosition(const glm::vec3& pos) { m_physicsPosition = pos; }
@@ -54,6 +72,7 @@ private:
     double m_radius;
     glm::vec3 m_color;
     OrbitalParams m_orbitalParams;
+    BodyType m_type;
     std::vector<std::unique_ptr<CelestialBody>> m_children;
     const CelestialBody* m_parent = nullptr;
 
